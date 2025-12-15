@@ -7,7 +7,7 @@ from datetime import datetime
 from flask import Blueprint, render_template, redirect, url_for, flash, request
 from flask_login import login_required, current_user
 from functools import wraps
-from models import db, User, Subscription, Dataset, DatasetMonth, DatasetRecord, ExportLog
+from models import db, User, Subscription, Dataset, DatasetMonth, DatasetRecord, ExportLog, License, LiveIntelligenceAccess, get_region_from_state, NIGERIA_REGIONS
 
 admin_bp = Blueprint('admin', __name__, url_prefix='/admin')
 
@@ -101,7 +101,22 @@ def upload():
                 db.session.add(dataset_month)
                 db.session.flush()
             
+            processed_rows = []
+            rejected_rows = []
+            
             for row in rows:
+                state = row.get('state') or row.get('State') or row.get('STATE')
+                if state:
+                    region_code = get_region_from_state(state)
+                    if region_code:
+                        row['region_code'] = region_code
+                        processed_rows.append(row)
+                    else:
+                        rejected_rows.append({'row': row, 'reason': f'Unknown state: {state}'})
+                else:
+                    processed_rows.append(row)
+            
+            for row in processed_rows:
                 record = DatasetRecord(
                     dataset_month_id=dataset_month.id,
                     record_json=row
@@ -110,7 +125,10 @@ def upload():
             
             db.session.commit()
             
-            flash(f'Successfully uploaded {len(rows)} records for {dataset.name} - {month}.', 'success')
+            msg = f'Successfully uploaded {len(processed_rows)} records for {dataset.name} - {month}.'
+            if rejected_rows:
+                msg += f' {len(rejected_rows)} rows rejected due to unmapped states.'
+            flash(msg, 'success' if not rejected_rows else 'warning')
             return redirect(url_for('admin.datasets'))
             
         except Exception as e:

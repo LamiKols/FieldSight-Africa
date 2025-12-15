@@ -3,6 +3,11 @@ Database models for Agricultural Intelligence Platform
 
 This platform sells time-sensitive agricultural intelligence, not static directories.
 Access expires because intelligence decays.
+
+PRODUCT TYPES:
+- Licensed Data Packs: One-off purchase, permanent snapshot ownership
+- Live Market Intelligence: Sales-led annual access with monthly updates
+- Subscriptions: Monthly access with region + crop scoping
 """
 
 from datetime import datetime
@@ -11,6 +16,36 @@ from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
 
 db = SQLAlchemy()
+
+NIGERIA_REGIONS = {
+    "SW": "South West",
+    "SE": "South East",
+    "SS": "South South",
+    "NC": "North Central",
+    "NW": "North West",
+    "NE": "North East"
+}
+
+NIGERIA_STATE_REGION_MAP = {
+    "Lagos": "SW", "Ogun": "SW", "Oyo": "SW", "Osun": "SW", "Ondo": "SW", "Ekiti": "SW",
+    "Abia": "SE", "Anambra": "SE", "Ebonyi": "SE", "Enugu": "SE", "Imo": "SE",
+    "Akwa Ibom": "SS", "Bayelsa": "SS", "Cross River": "SS",
+    "Delta": "SS", "Edo": "SS", "Rivers": "SS",
+    "Benue": "NC", "Kogi": "NC", "Kwara": "NC", "Nasarawa": "NC",
+    "Niger": "NC", "Plateau": "NC", "FCT": "NC", "Abuja": "NC",
+    "Kaduna": "NW", "Kano": "NW", "Katsina": "NW",
+    "Kebbi": "NW", "Jigawa": "NW", "Sokoto": "NW", "Zamfara": "NW",
+    "Adamawa": "NE", "Bauchi": "NE", "Borno": "NE",
+    "Gombe": "NE", "Taraba": "NE", "Yobe": "NE"
+}
+
+
+def get_region_from_state(state_name):
+    """Map a state name to its region code. Returns None if not found."""
+    if not state_name:
+        return None
+    normalized = state_name.strip().title()
+    return NIGERIA_STATE_REGION_MAP.get(normalized)
 
 
 class User(UserMixin, db.Model):
@@ -81,6 +116,8 @@ class Subscription(db.Model):
     plan_code = db.Column(db.String(50), nullable=False)
     status = db.Column(db.String(20), default='active')
     current_period_end = db.Column(db.DateTime, nullable=False)
+    regions_selected = db.Column(db.JSON, default=list)
+    crops_selected = db.Column(db.JSON, default=list)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
@@ -94,6 +131,8 @@ class PaymentPlan(db.Model):
     paystack_plan_code = db.Column(db.String(255))
     monthly_export_limit = db.Column(db.Integer, nullable=False)
     allowed_datasets = db.Column(db.JSON, nullable=False)
+    regions_allowed = db.Column(db.Integer, default=1)
+    crops_allowed = db.Column(db.Integer, default=6)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
@@ -152,3 +191,79 @@ class ViewLog(db.Model):
     
     user = db.relationship('User', backref='view_logs')
     dataset_month = db.relationship('DatasetMonth', backref='view_logs')
+
+
+class LicensedPack(db.Model):
+    __tablename__ = 'licensed_packs'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    code = db.Column(db.String(50), unique=True, nullable=False)
+    name = db.Column(db.String(100), nullable=False)
+    description = db.Column(db.Text)
+    regions_allowed = db.Column(db.Integer, nullable=False)
+    crops_allowed = db.Column(db.Integer, nullable=True)
+    price_usd = db.Column(db.Integer, nullable=False)
+    price_ngn = db.Column(db.Integer, nullable=False)
+    stripe_price_id = db.Column(db.String(255))
+    stripe_payment_link = db.Column(db.String(255))
+    paystack_plan_code = db.Column(db.String(255))
+    active = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    licenses = db.relationship('License', backref='licensed_pack', lazy=True)
+
+
+class License(db.Model):
+    __tablename__ = 'licenses'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    licensed_pack_id = db.Column(db.Integer, db.ForeignKey('licensed_packs.id'), nullable=False)
+    regions_selected = db.Column(db.JSON, nullable=False)
+    crops_selected = db.Column(db.JSON, nullable=False)
+    snapshot_month = db.Column(db.String(7), nullable=False)
+    status = db.Column(db.String(20), default='active')
+    stripe_payment_intent_id = db.Column(db.String(255))
+    paystack_reference = db.Column(db.String(255))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    user = db.relationship('User', backref='licenses')
+
+
+class LiveIntelligenceAccess(db.Model):
+    __tablename__ = 'live_intelligence_access'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    regions_allowed = db.Column(db.Integer, nullable=False)
+    crops_allowed = db.Column(db.Integer, nullable=True)
+    regions_selected = db.Column(db.JSON, nullable=False)
+    crops_selected = db.Column(db.JSON, nullable=False)
+    start_date = db.Column(db.DateTime, nullable=False)
+    end_date = db.Column(db.DateTime, nullable=False)
+    active = db.Column(db.Boolean, default=True)
+    notes = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    user = db.relationship('User', backref='live_intelligence_access')
+    
+    def is_valid(self):
+        now = datetime.utcnow()
+        return self.active and self.start_date <= now <= self.end_date
+
+
+class Payment(db.Model):
+    __tablename__ = 'payments'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    provider = db.Column(db.String(20), nullable=False)
+    provider_reference = db.Column(db.String(255), nullable=False)
+    payment_type = db.Column(db.String(50), nullable=False)
+    amount_usd = db.Column(db.Integer)
+    amount_ngn = db.Column(db.Integer)
+    status = db.Column(db.String(20), default='pending')
+    metadata_json = db.Column(db.JSON)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    user = db.relationship('User', backref='payments')

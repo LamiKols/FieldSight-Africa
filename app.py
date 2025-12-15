@@ -20,7 +20,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from models import db, User, PaymentPlan, Dataset
+from models import db, User, PaymentPlan, Dataset, LicensedPack
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SESSION_SECRET', 'dev-secret-key')
@@ -66,6 +66,8 @@ def seed_payment_plans():
             "paystack_plan_code": os.getenv("PAYSTACK_STARTER_PLAN_CODE"),
             "monthly_export_limit": 5000,
             "allowed_datasets": ["actor_activity_status"],
+            "regions_allowed": 1,
+            "crops_allowed": 6,
         },
         {
             "code": "INTELLIGENCE",
@@ -79,13 +81,57 @@ def seed_payment_plans():
                 "crop_availability_status",
                 "trust_index"
             ],
+            "regions_allowed": 3,
+            "crops_allowed": 15,
         }
     ]
     
-    for plan in plans:
-        existing = PaymentPlan.query.filter_by(code=plan["code"]).first()
+    for plan_data in plans:
+        existing = PaymentPlan.query.filter_by(code=plan_data["code"]).first()
+        if existing:
+            existing.regions_allowed = plan_data["regions_allowed"]
+            existing.crops_allowed = plan_data["crops_allowed"]
+        else:
+            db.session.add(PaymentPlan(**plan_data))
+    
+    db.session.commit()
+
+
+def seed_licensed_packs():
+    packs = [
+        {
+            "code": "CORE_REGIONAL",
+            "name": "Core Regional Intelligence Pack",
+            "description": "Single region focus with up to 6 crops. Permanent licensed access to a point-in-time snapshot.",
+            "regions_allowed": 1,
+            "crops_allowed": 6,
+            "price_usd": 1800,
+            "price_ngn": 1500000,
+        },
+        {
+            "code": "EXPANDED_REGIONAL",
+            "name": "Expanded Regional Intelligence Pack",
+            "description": "Two regions with up to 15 crops total. Permanent licensed access to a point-in-time snapshot.",
+            "regions_allowed": 2,
+            "crops_allowed": 15,
+            "price_usd": 3800,
+            "price_ngn": 3000000,
+        },
+        {
+            "code": "NATIONAL",
+            "name": "National Intelligence Pack",
+            "description": "All 6 regions and all crops. Complete national coverage snapshot with permanent licensed access.",
+            "regions_allowed": 6,
+            "crops_allowed": None,
+            "price_usd": 8500,
+            "price_ngn": 7000000,
+        }
+    ]
+    
+    for pack_data in packs:
+        existing = LicensedPack.query.filter_by(code=pack_data["code"]).first()
         if not existing:
-            db.session.add(PaymentPlan(**plan))
+            db.session.add(LicensedPack(**pack_data))
     
     db.session.commit()
 
@@ -126,6 +172,7 @@ with app.app_context():
     db.create_all()
     seed_payment_plans()
     seed_datasets()
+    seed_licensed_packs()
 
 
 if __name__ == '__main__':
