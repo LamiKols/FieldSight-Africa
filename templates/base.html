@@ -6,7 +6,7 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
-    <title>{% block title %}AgriIntel{% endblock %}</title>
+    <title>{% block title %}Field Sight Africa{% endblock %}</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
@@ -15,7 +15,10 @@
                     colors: {
                         primary: '#059669',
                         secondary: '#065f46',
-                        accent: '#34d399'
+                        accent: '#34d399',
+                        amber: '#f59e0b',
+                        'amber-light': '#fbbf24',
+                        'amber-dark': '#d97706'
                     }
                 }
             }
@@ -28,7 +31,7 @@
             <div class="flex justify-between h-16">
                 <div class="flex items-center">
                     <a href="{{ url_for('public.home') }}" class="flex items-center">
-                        <span class="text-2xl font-bold text-primary">AgriIntel</span>
+                        <span class="text-2xl font-bold"><span class="text-primary">Field Sight</span> <span class="text-amber">Africa</span></span>
                     </a>
                     <div class="hidden md:ml-10 md:flex md:space-x-8">
                         <a href="{{ url_for('public.home') }}" class="text-gray-600 hover:text-primary px-3 py-2">Home</a>
@@ -73,7 +76,7 @@
     <footer class="bg-white border-t mt-auto py-8">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <p class="text-center text-gray-500 text-sm">
-                &copy; 2024 AgriIntel. Agricultural Intelligence Platform.
+                &copy; 2024 Field Sight Africa. Agricultural Intelligence Platform.
             </p>
         </div>
     </footer>

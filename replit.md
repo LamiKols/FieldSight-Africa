@@ -1,4 +1,4 @@
-# AgriIntel - Agricultural Intelligence Platform
+# Field Sight Africa - Agricultural Intelligence Platform
 
 ## Overview
 A subscription-controlled data access platform selling time-sensitive agricultural intelligence datasets. This platform monetises monthly agricultural intelligence via subscriptions using Stripe (international) and Paystack (Nigeria).
@@ -34,11 +34,6 @@ A subscription-controlled data access platform selling time-sensitive agricultur
 │   ├── datasets.html   # Dataset catalogue
 │   ├── dataset_view.html   # Dataset viewer with export
 │   └── admin/          # Admin templates
-│       ├── dashboard.html
-│       ├── upload.html
-│       ├── datasets.html
-│       ├── users.html
-│       └── user_detail.html
 └── static/             # Static assets
 ```
 
@@ -62,13 +57,18 @@ A subscription-controlled data access platform selling time-sensitive agricultur
 3. crop_availability_status
 4. trust_index
 
+## Color Scheme
+- **Primary (Green):** #059669
+- **Secondary (Dark Green):** #065f46
+- **Amber (Accent):** #f59e0b
+
 ## Environment Variables Required
 - `DATABASE_URL` - PostgreSQL connection string (auto-configured)
 - `SESSION_SECRET` - Flask session secret
 - `STRIPE_SECRET_KEY` - Stripe API key
 - `STRIPE_STARTER_PRICE_ID` - Stripe price ID for Starter plan
 - `STRIPE_INTELLIGENCE_PRICE_ID` - Stripe price ID for Intelligence plan
-- `STRIPE_WEBHOOK_SECRET` - Stripe webhook signing secret (optional)
+- `STRIPE_WEBHOOK_SECRET` - Stripe webhook signing secret
 - `PAYSTACK_SECRET_KEY` - Paystack API key
 - `PAYSTACK_STARTER_PLAN_CODE` - Paystack plan code for Starter
 - `PAYSTACK_INTELLIGENCE_PLAN_CODE` - Paystack plan code for Intelligence
@@ -81,10 +81,3 @@ The application runs on port 5000.
 
 ## Admin Access
 Create an admin user by manually updating the `role` field to 'admin' in the database for a registered user.
-
-## Future Enhancements (Planned)
-- Webhooks reconciliation for subscription status
-- Annual billing options
-- API access for programmatic data retrieval
-- Revenue sharing capabilities
-- Automated data refresh pipeline
