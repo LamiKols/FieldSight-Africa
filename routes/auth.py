@@ -73,8 +73,8 @@ def register():
         db.session.commit()
         
         login_user(user)
-        flash('Account created successfully!', 'success')
-        return redirect(url_for('subscriber.dashboard'))
+        flash('Welcome to FieldSight Africa! Explore our data packs to get started.', 'success')
+        return redirect(url_for('subscriber.packs'))
     
     return render_template('register.html')
 

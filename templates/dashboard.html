@@ -4,6 +4,25 @@
 
 {% block content %}
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    {% if subscription %}
+    <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+        <div class="flex items-start">
+            <svg class="w-5 h-5 text-blue-600 mr-2 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            <div>
+                <p class="text-blue-900 font-medium">Important Notice</p>
+                <p class="text-blue-800 text-sm mt-1">
+                    Subscription plans are no longer offered to new customers. 
+                    <a href="{{ url_for('subscriber.packs') }}" class="underline font-medium">Licensed Data Packs</a> and 
+                    <a href="{{ url_for('subscriber.live_intelligence') }}" class="underline font-medium">Live Market Intelligence</a> 
+                    are now the recommended access models.
+                </p>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
     <div class="mb-8">
         <h1 class="text-3xl font-bold text-gray-900">Welcome, {{ current_user.name }}</h1>
         <p class="text-gray-600 mt-1">Access your agricultural intelligence data</p>
@@ -16,8 +35,8 @@
                 <p class="text-2xl font-bold text-primary mt-2">{{ plan.name if plan else 'Active' }}</p>
                 <p class="text-sm text-gray-600 mt-1">Expires: {{ subscription.current_period_end.strftime('%B %d, %Y') }}</p>
             {% else %}
-                <p class="text-2xl font-bold text-gray-400 mt-2">Free</p>
-                <a href="{{ url_for('public.pricing') }}" class="text-sm text-primary hover:underline">Upgrade now</a>
+                <p class="text-2xl font-bold text-gray-400 mt-2">Free Preview</p>
+                <a href="{{ url_for('subscriber.packs') }}" class="text-sm text-primary hover:underline">View Data Packs</a>
             {% endif %}
         </div>
 
@@ -74,7 +93,7 @@
                     {% if current_user.can_access_dataset(ds.code) %}
                         <span class="px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm">Access Granted</span>
                     {% else %}
-                        <span class="px-3 py-1 bg-gray-100 text-gray-600 rounded-full text-sm">Upgrade Required</span>
+                        <span class="px-3 py-1 bg-gray-100 text-gray-600 rounded-full text-sm">Data Pack Required</span>
                     {% endif %}
                     <a href="{{ url_for('subscriber.datasets') }}" class="text-primary hover:underline">View</a>
                 </div>
