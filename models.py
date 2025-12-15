@@ -140,3 +140,15 @@ class ExportLog(db.Model):
     exported_at = db.Column(db.DateTime, default=datetime.utcnow)
     
     dataset_month = db.relationship('DatasetMonth', backref='export_logs')
+
+
+class ViewLog(db.Model):
+    __tablename__ = 'view_logs'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    dataset_month_id = db.Column(db.Integer, db.ForeignKey('dataset_months.id'), nullable=False)
+    viewed_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    user = db.relationship('User', backref='view_logs')
+    dataset_month = db.relationship('DatasetMonth', backref='view_logs')

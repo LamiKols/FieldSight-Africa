@@ -1,0 +1,97 @@
+You are enhancing an existing Flask + Jinja + Tailwind application that displays paid datasets.
+
+Objective:
+Reduce casual copying and scraping of dataset tables while preserving usability for legitimate subscribers.
+
+Frontend Changes (Jinja Templates)
+
+Apply the following only to dataset detail pages (/datasets/<dataset>/<month>):
+
+Disable text selection on dataset tables
+
+Disable right-click context menu on dataset tables
+
+Intercept common copy keyboard shortcuts
+
+Add the following CSS class to dataset tables:
+
+<table class="no-select">
+
+
+Add this CSS:
+
+.no-select {
+  user-select: none;
+  -webkit-user-select: none;
+  -ms-user-select: none;
+}
+
+
+Add this JavaScript (scoped to dataset pages only):
+
+<script>
+  document.addEventListener("contextmenu", function (e) {
+    if (e.target.closest(".no-select")) {
+      e.preventDefault();
+    }
+  });
+
+  document.addEventListener("keydown", function (e) {
+    if (
+      (e.ctrlKey || e.metaKey) &&
+      ["c", "x", "a"].includes(e.key.toLowerCase())
+    ) {
+      if (document.querySelector(".no-select")) {
+        e.preventDefault();
+      }
+    }
+  });
+</script>
+
+Backend Reinforcement (Required)
+
+Ensure Free users never receive row-level data
+
+Enforce export limits strictly via ExportLog
+
+Rate-limit dataset page access (simple per-user throttle)
+
+Log dataset page views per user
+
+Watermarking (Optional but Recommended)
+
+When rendering dataset rows, append a subtle watermark:
+
+<span class="text-xs text-gray-400 italic">
+  Accessed by {{ current_user.email }} · {{ dataset_month.month }}
+</span>
+
+UX Notice (Important)
+
+Display a small notice above tables:
+
+“For licensed use only. Bulk extraction outside CSV exports is prohibited.”
+
+This strengthens your legal position.
+
+Acceptance Criteria
+
+Right-click disabled on dataset tables
+
+Text selection disabled on dataset tables
+
+Copy shortcuts blocked on dataset pages
+
+Exports remain the only clean data extraction path
+
+Free users cannot see row-level data
+
+6. Final Recommendation (Very Clear)
+
+✔ Implement deterrence, not illusion
+✔ Protect exports, not pixels
+✔ Let CSV be the controlled escape hatch
+✔ Log everything
+✔ Don’t overpromise security
+
+This approach is industry-standard and legally defensible.

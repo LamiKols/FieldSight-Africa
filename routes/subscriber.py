@@ -3,12 +3,14 @@
 import csv
 import io
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from flask import Blueprint, render_template, redirect, url_for, flash, request, Response
 from flask_login import login_required, current_user
-from models import db, Dataset, DatasetMonth, DatasetRecord, ExportLog
+from models import db, Dataset, DatasetMonth, DatasetRecord, ExportLog, ViewLog
 
 subscriber_bp = Blueprint('subscriber', __name__)
+
+RATE_LIMIT_VIEWS_PER_MINUTE = 30
 
 
 def subscription_required(f):
@@ -74,6 +76,16 @@ def view_dataset_month(dataset_code, month):
     
     dataset_month = DatasetMonth.query.filter_by(dataset_id=dataset.id, month=month, published=True).first_or_404()
     
+    one_minute_ago = datetime.utcnow() - timedelta(minutes=1)
+    recent_views = ViewLog.query.filter(
+        ViewLog.user_id == current_user.id,
+        ViewLog.viewed_at > one_minute_ago
+    ).count()
+    
+    if recent_views >= RATE_LIMIT_VIEWS_PER_MINUTE:
+        flash('Too many requests. Please wait a moment before viewing more datasets.', 'warning')
+        return redirect(url_for('subscriber.datasets'))
+    
     records = DatasetRecord.query.filter_by(dataset_month_id=dataset_month.id).limit(100).all()
     total_records = DatasetRecord.query.filter_by(dataset_month_id=dataset_month.id).count()
     
@@ -81,8 +93,15 @@ def view_dataset_month(dataset_code, month):
     monthly_exports = current_user.get_monthly_exports()
     remaining_exports = plan.monthly_export_limit - monthly_exports if plan else 0
     
-    current_month = datetime.utcnow().strftime('%Y-%m')
-    is_current_month = month == current_month
+    current_month_str = datetime.utcnow().strftime('%Y-%m')
+    is_current_month = month == current_month_str
+    
+    view_log = ViewLog(
+        user_id=current_user.id,
+        dataset_month_id=dataset_month.id
+    )
+    db.session.add(view_log)
+    db.session.commit()
     
     return render_template('dataset_view.html',
                            dataset=dataset,

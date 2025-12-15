@@ -1,6 +1,16 @@
 {% extends "base.html" %}
 
-{% block title %}{{ dataset.name }} - {{ dataset_month.month }} - AgriIntel{% endblock %}
+{% block title %}{{ dataset.name }} - {{ dataset_month.month }} - FieldSight Africa{% endblock %}
+
+{% block head %}
+<style>
+    .no-select {
+        user-select: none;
+        -webkit-user-select: none;
+        -ms-user-select: none;
+    }
+</style>
+{% endblock %}
 
 {% block content %}
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -39,6 +49,15 @@
     </div>
     {% endif %}
 
+    <div class="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
+        <div class="flex items-start">
+            <svg class="w-5 h-5 text-amber-600 mr-2 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            <p class="text-amber-800 text-sm">For licensed use only. Bulk extraction outside CSV exports is prohibited.</p>
+        </div>
+    </div>
+
     <div class="bg-white rounded-xl shadow-sm border overflow-hidden">
         <div class="p-4 bg-gray-50 border-b">
             <div class="flex items-center justify-between">
@@ -55,7 +74,7 @@
                 {% if first_record is string %}
                     {% set first_record = first_record | tojson | safe %}
                 {% endif %}
-                <table class="w-full">
+                <table class="w-full no-select">
                     <thead class="bg-gray-50">
                         <tr>
                             {% for key in first_record.keys() %}
@@ -79,6 +98,31 @@
                 </div>
             {% endif %}
         </div>
+
+        <div class="p-4 bg-gray-50 border-t">
+            <span class="text-xs text-gray-400 italic">
+                Accessed by {{ current_user.email }} · {{ dataset_month.month }}
+            </span>
+        </div>
     </div>
 </div>
+
+<script>
+    document.addEventListener("contextmenu", function (e) {
+        if (e.target.closest(".no-select")) {
+            e.preventDefault();
+        }
+    });
+
+    document.addEventListener("keydown", function (e) {
+        if (
+            (e.ctrlKey || e.metaKey) &&
+            ["c", "x", "a"].includes(e.key.toLowerCase())
+        ) {
+            if (document.querySelector(".no-select")) {
+                e.preventDefault();
+            }
+        }
+    });
+</script>
 {% endblock %}
