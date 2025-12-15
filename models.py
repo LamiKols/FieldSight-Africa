@@ -267,3 +267,97 @@ class Payment(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
     user = db.relationship('User', backref='payments')
+
+
+def get_user_entitlements(user):
+    """
+    Get user's data access entitlements with priority logic.
+    
+    Priority (highest to lowest):
+    1. Active LiveIntelligenceAccess - full live access to monthly updates
+    2. Active License - snapshot access to specific month only
+    3. Active Subscription - monthly access with scoped regions/crops
+    4. Free - view catalogue only, no data access
+    
+    Returns dict with:
+    - access_type: 'live_intelligence' | 'license' | 'subscription' | 'free'
+    - regions: list of region codes user can access
+    - crops: list of crop names user can access (None = all)
+    - datasets: list of dataset codes user can access
+    - monthly_export_limit: int or None
+    - snapshot_month: str (YYYY-MM) for license only, else None
+    - source: the access object (LiveIntelligenceAccess, License, Subscription, or None)
+    """
+    if not user:
+        return {
+            'access_type': 'free',
+            'regions': [],
+            'crops': [],
+            'datasets': [],
+            'monthly_export_limit': 0,
+            'snapshot_month': None,
+            'source': None
+        }
+    
+    now = datetime.utcnow()
+    
+    live_access = LiveIntelligenceAccess.query.filter_by(
+        user_id=user.id,
+        active=True
+    ).filter(
+        LiveIntelligenceAccess.start_date <= now,
+        LiveIntelligenceAccess.end_date >= now
+    ).first()
+    
+    if live_access:
+        all_datasets = ['actor_activity_status', 'market_changes', 'crop_availability_status', 'trust_index']
+        return {
+            'access_type': 'live_intelligence',
+            'regions': live_access.regions_selected or list(NIGERIA_REGIONS.keys()),
+            'crops': live_access.crops_selected if live_access.crops_selected else None,
+            'datasets': all_datasets,
+            'monthly_export_limit': None,
+            'snapshot_month': None,
+            'source': live_access
+        }
+    
+    active_license = License.query.filter_by(
+        user_id=user.id,
+        status='active'
+    ).order_by(License.created_at.desc()).first()
+    
+    if active_license:
+        all_datasets = ['actor_activity_status', 'market_changes', 'crop_availability_status', 'trust_index']
+        return {
+            'access_type': 'license',
+            'regions': active_license.regions_selected or [],
+            'crops': active_license.crops_selected if active_license.crops_selected else None,
+            'datasets': all_datasets,
+            'monthly_export_limit': None,
+            'snapshot_month': active_license.snapshot_month,
+            'source': active_license
+        }
+    
+    subscription = user.get_active_subscription()
+    if subscription:
+        plan = PaymentPlan.query.filter_by(code=subscription.plan_code).first()
+        if plan:
+            return {
+                'access_type': 'subscription',
+                'regions': subscription.regions_selected or [],
+                'crops': subscription.crops_selected or [],
+                'datasets': plan.allowed_datasets or [],
+                'monthly_export_limit': plan.monthly_export_limit,
+                'snapshot_month': None,
+                'source': subscription
+            }
+    
+    return {
+        'access_type': 'free',
+        'regions': [],
+        'crops': [],
+        'datasets': [],
+        'monthly_export_limit': 0,
+        'snapshot_month': None,
+        'source': None
+    }

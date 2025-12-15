@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+
+{% block title %}Purchase {{ pack.name }} - FieldSight Africa{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+    <div class="mb-8">
+        <a href="{{ url_for('subscriber.packs') }}" class="text-gray-600 hover:text-primary inline-flex items-center mb-4">
+            <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+            </svg>
+            Back to Data Packs
+        </a>
+        <h1 class="text-3xl font-bold text-gray-900">Complete Your Purchase</h1>
+    </div>
+
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
+        <div class="flex justify-between items-start mb-4">
+            <div>
+                <h2 class="text-xl font-semibold text-gray-900">{{ pack.name }}</h2>
+                <p class="text-gray-600 text-sm">{{ pack.description }}</p>
+            </div>
+            <div class="text-right">
+                {% if provider == 'stripe' %}
+                <div class="text-2xl font-bold text-gray-900">${{ "{:,}".format(pack.price_usd) }}</div>
+                {% else %}
+                <div class="text-2xl font-bold text-gray-900">₦{{ "{:,}".format(pack.price_ngn) }}</div>
+                {% endif %}
+                <div class="text-sm text-gray-500">One-time payment</div>
+            </div>
+        </div>
+        
+        <div class="border-t border-gray-100 pt-4">
+            <div class="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                    <span class="text-gray-500">Snapshot Month:</span>
+                    <span class="font-medium text-gray-900 ml-2">{{ current_month }}</span>
+                </div>
+                <div>
+                    <span class="text-gray-500">Regions:</span>
+                    <span class="font-medium text-gray-900 ml-2">{% if pack.regions_allowed == 6 %}All 6{% else %}{{ pack.regions_allowed }}{% endif %}</span>
+                </div>
+                <div>
+                    <span class="text-gray-500">Crops:</span>
+                    <span class="font-medium text-gray-900 ml-2">{% if pack.crops_allowed %}Up to {{ pack.crops_allowed }}{% else %}All{% endif %}</span>
+                </div>
+                <div>
+                    <span class="text-gray-500">Datasets:</span>
+                    <span class="font-medium text-gray-900 ml-2">All 4 included</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <form action="{{ url_for('payments.process_pack_payment', pack_code=pack.code, provider=provider) }}" method="POST" class="space-y-6">
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <h3 class="text-lg font-semibold text-gray-900 mb-4">Select Your Regions</h3>
+            <p class="text-sm text-gray-600 mb-4">Choose {% if pack.regions_allowed == 6 %}all{% else %}up to {{ pack.regions_allowed }}{% endif %} region{% if pack.regions_allowed > 1 %}s{% endif %} for your data pack.</p>
+            
+            <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
+                {% for code, name in regions.items() %}
+                <label class="flex items-center p-3 border border-gray-200 rounded-lg hover:border-primary cursor-pointer">
+                    <input type="checkbox" name="regions" value="{{ code }}" 
+                           class="mr-3 text-primary focus:ring-primary rounded"
+                           {% if pack.regions_allowed == 6 %}checked{% endif %}>
+                    <div>
+                        <span class="inline-block bg-primary text-white text-xs font-bold px-2 py-0.5 rounded mr-1">{{ code }}</span>
+                        <span class="text-gray-800 text-sm">{{ name }}</span>
+                    </div>
+                </label>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <h3 class="text-lg font-semibold text-gray-900 mb-4">Enter Crops of Interest</h3>
+            <p class="text-sm text-gray-600 mb-4">
+                {% if pack.crops_allowed %}Enter up to {{ pack.crops_allowed }} crops (comma-separated).{% else %}Enter the crops you're interested in (comma-separated), or leave blank for all crops.{% endif %}
+            </p>
+            
+            <textarea name="crops" rows="3" 
+                      placeholder="e.g., Maize, Rice, Cassava, Yam, Tomatoes"
+                      class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"></textarea>
+        </div>
+
+        <div class="bg-amber-50 border border-amber-200 rounded-xl p-4">
+            <div class="flex items-start">
+                <svg class="w-5 h-5 text-amber-600 mr-2 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                <div class="text-sm text-amber-800">
+                    <strong>Important:</strong> This is a one-time purchase for a permanent snapshot of the {{ current_month }} data. 
+                    This data does not update monthly. For live updates, consider our 
+                    <a href="{{ url_for('subscriber.live_intelligence') }}" class="underline">Live Intelligence</a> program.
+                </div>
+            </div>
+        </div>
+
+        <button type="submit" class="w-full py-4 px-6 bg-primary text-white rounded-lg hover:bg-secondary transition font-medium text-lg">
+            {% if provider == 'stripe' %}
+            Continue to Payment (${{ "{:,}".format(pack.price_usd) }})
+            {% else %}
+            Continue to Payment (₦{{ "{:,}".format(pack.price_ngn) }})
+            {% endif %}
+        </button>
+    </form>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const maxRegions = {{ pack.regions_allowed }};
+    const checkboxes = document.querySelectorAll('input[name="regions"]');
+    
+    if (maxRegions < 6) {
+        checkboxes.forEach(cb => {
+            cb.addEventListener('change', function() {
+                const checked = document.querySelectorAll('input[name="regions"]:checked');
+                if (checked.length > maxRegions) {
+                    this.checked = false;
+                    alert('You can select up to ' + maxRegions + ' region(s) with this pack.');
+                }
+            });
+        });
+    }
+});
+</script>
+{% endblock %}

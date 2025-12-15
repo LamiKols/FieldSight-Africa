@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+
+{% block title %}My Licenses - FieldSight Africa{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+    <div class="mb-8">
+        <h1 class="text-3xl font-bold text-gray-900 mb-2">My Licensed Data</h1>
+        <p class="text-gray-600">Your purchased data pack licenses and snapshot access.</p>
+    </div>
+
+    {% if licenses %}
+    <div class="grid gap-6">
+        {% for license in licenses %}
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <div class="flex flex-col md:flex-row md:items-center md:justify-between">
+                <div class="mb-4 md:mb-0">
+                    <div class="flex items-center mb-2">
+                        <h3 class="text-xl font-semibold text-gray-900 mr-3">{{ license.licensed_pack.name }}</h3>
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium {% if license.status == 'active' %}bg-green-100 text-green-800{% else %}bg-gray-100 text-gray-800{% endif %}">
+                            {{ license.status|capitalize }}
+                        </span>
+                    </div>
+                    <p class="text-gray-600 text-sm mb-3">{{ license.licensed_pack.description }}</p>
+                    
+                    <div class="flex flex-wrap gap-4 text-sm">
+                        <div>
+                            <span class="text-gray-500">Snapshot Month:</span>
+                            <span class="font-medium text-gray-900">{{ license.snapshot_month }}</span>
+                        </div>
+                        <div>
+                            <span class="text-gray-500">Purchased:</span>
+                            <span class="font-medium text-gray-900">{{ license.created_at.strftime('%B %d, %Y') }}</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="flex flex-col items-start md:items-end">
+                    {% if license.status == 'active' %}
+                    <a href="{{ url_for('subscriber.datasets') }}" 
+                       class="inline-flex items-center px-4 py-2 bg-primary text-white rounded-lg hover:bg-secondary transition">
+                        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                        </svg>
+                        Access Data
+                    </a>
+                    {% endif %}
+                </div>
+            </div>
+            
+            <div class="mt-4 pt-4 border-t border-gray-100">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <h4 class="text-sm font-medium text-gray-700 mb-2">Regions Included</h4>
+                        <div class="flex flex-wrap gap-2">
+                            {% for region_code in license.regions_selected %}
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded bg-primary/10 text-primary text-xs font-medium">
+                                {{ regions.get(region_code, region_code) }}
+                            </span>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    <div>
+                        <h4 class="text-sm font-medium text-gray-700 mb-2">Crops Included</h4>
+                        <div class="flex flex-wrap gap-2">
+                            {% if license.crops_selected %}
+                                {% for crop in license.crops_selected[:8] %}
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded bg-amber/10 text-amber-dark text-xs font-medium">
+                                    {{ crop }}
+                                </span>
+                                {% endfor %}
+                                {% if license.crops_selected|length > 8 %}
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded bg-gray-100 text-gray-600 text-xs font-medium">
+                                    +{{ license.crops_selected|length - 8 }} more
+                                </span>
+                                {% endif %}
+                            {% else %}
+                            <span class="text-gray-500 text-sm">All crops</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center">
+        <svg class="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+        </svg>
+        <h3 class="text-xl font-semibold text-gray-900 mb-2">No Licensed Data Yet</h3>
+        <p class="text-gray-600 mb-6">Purchase a data pack to get permanent access to agricultural intelligence snapshots.</p>
+        <a href="{{ url_for('subscriber.packs') }}" class="inline-flex items-center px-6 py-3 bg-primary text-white rounded-lg hover:bg-secondary transition">
+            Browse Data Packs
+        </a>
+    </div>
+    {% endif %}
+
+    <div class="mt-8 bg-gray-50 rounded-xl p-6">
+        <h3 class="font-semibold text-gray-900 mb-2">Understanding Your Licenses</h3>
+        <ul class="text-sm text-gray-600 space-y-2">
+            <li class="flex items-start">
+                <svg class="w-4 h-4 text-primary mr-2 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                </svg>
+                <span><strong>Permanent ownership:</strong> Your licensed data never expires.</span>
+            </li>
+            <li class="flex items-start">
+                <svg class="w-4 h-4 text-primary mr-2 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                </svg>
+                <span><strong>Snapshot data:</strong> Licensed data represents a point-in-time snapshot and does not include future updates.</span>
+            </li>
+            <li class="flex items-start">
+                <svg class="w-4 h-4 text-primary mr-2 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                </svg>
+                <span><strong>Unlimited exports:</strong> Download your data as many times as you need.</span>
+            </li>
+        </ul>
+    </div>
+</div>
+{% endblock %}

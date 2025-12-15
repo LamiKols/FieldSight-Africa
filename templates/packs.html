@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+
+{% block title %}Licensed Data Packs - FieldSight Africa{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+    <div class="text-center mb-12">
+        <h1 class="text-4xl font-bold text-gray-900 mb-4">Licensed Data Packs</h1>
+        <p class="text-xl text-gray-600 max-w-3xl mx-auto">
+            One-time purchase, permanent ownership. Get a complete snapshot of agricultural intelligence 
+            data for your selected regions and crops.
+        </p>
+    </div>
+
+    <div class="bg-amber-50 border border-amber-200 rounded-xl p-6 mb-12 max-w-4xl mx-auto">
+        <div class="flex items-start">
+            <svg class="w-6 h-6 text-amber-600 mr-3 mt-1 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            <div>
+                <h3 class="font-semibold text-amber-900 mb-1">What You Get</h3>
+                <p class="text-amber-800 text-sm">
+                    Licensed data packs provide a <strong>permanent snapshot</strong> of the current month's intelligence data ({{ current_month }}).
+                    You own this data forever but it does not update. For live monthly updates, consider our 
+                    <a href="{{ url_for('subscriber.live_intelligence') }}" class="underline font-medium">Live Intelligence</a> program.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <div class="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
+        {% for pack in packs %}
+        <div class="bg-white rounded-2xl shadow-lg border {% if pack.code == 'NATIONAL' %}border-primary{% else %}border-gray-200{% endif %} p-8 relative flex flex-col">
+            {% if pack.code == 'NATIONAL' %}
+            <div class="absolute -top-4 left-1/2 transform -translate-x-1/2">
+                <span class="bg-primary text-white px-4 py-1 rounded-full text-sm font-medium">Best Value</span>
+            </div>
+            {% endif %}
+            
+            <h3 class="text-xl font-semibold text-gray-900 mb-2">{{ pack.name }}</h3>
+            <p class="text-gray-600 text-sm mb-4">{{ pack.description }}</p>
+            
+            <div class="mb-6">
+                <div class="flex items-baseline mb-1">
+                    <span class="text-3xl font-bold text-gray-900">${{ "{:,}".format(pack.price_usd) }}</span>
+                    <span class="text-gray-500 ml-2">one-time</span>
+                </div>
+                <div class="text-sm text-gray-500">
+                    or ₦{{ "{:,}".format(pack.price_ngn) }}
+                </div>
+            </div>
+            
+            <ul class="space-y-3 mb-8 flex-grow">
+                <li class="flex items-center text-gray-600">
+                    <svg class="w-5 h-5 text-green-500 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                    </svg>
+                    {% if pack.regions_allowed == 6 %}All 6 regions{% else %}{{ pack.regions_allowed }} region{% if pack.regions_allowed > 1 %}s{% endif %}{% endif %}
+                </li>
+                <li class="flex items-center text-gray-600">
+                    <svg class="w-5 h-5 text-green-500 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                    </svg>
+                    {% if pack.crops_allowed %}Up to {{ pack.crops_allowed }} crops{% else %}All crops{% endif %}
+                </li>
+                <li class="flex items-center text-gray-600">
+                    <svg class="w-5 h-5 text-green-500 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                    </svg>
+                    All 4 datasets included
+                </li>
+                <li class="flex items-center text-gray-600">
+                    <svg class="w-5 h-5 text-green-500 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                    </svg>
+                    {{ current_month }} snapshot
+                </li>
+                <li class="flex items-center text-gray-600">
+                    <svg class="w-5 h-5 text-green-500 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                    </svg>
+                    Permanent ownership
+                </li>
+                <li class="flex items-center text-gray-600">
+                    <svg class="w-5 h-5 text-green-500 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                    </svg>
+                    Unlimited exports
+                </li>
+            </ul>
+
+            <div class="space-y-3">
+                {% if current_user.is_authenticated %}
+                    <a href="{{ url_for('payments.pack_checkout', pack_code=pack.code, provider='stripe') }}" 
+                       class="block w-full text-center py-3 px-4 rounded-lg bg-primary text-white hover:bg-secondary transition">
+                        Pay with Card
+                    </a>
+                    <a href="{{ url_for('payments.pack_checkout', pack_code=pack.code, provider='paystack') }}" 
+                       class="block w-full text-center py-3 px-4 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition">
+                        Pay with Paystack (₦)
+                    </a>
+                {% else %}
+                    <a href="{{ url_for('auth.register') }}" class="block w-full text-center py-3 px-4 rounded-lg bg-primary text-white hover:bg-secondary transition">
+                        Sign Up to Purchase
+                    </a>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <div class="mt-16 max-w-4xl mx-auto">
+        <h2 class="text-2xl font-bold text-gray-900 mb-6 text-center">Nigeria's Six Regions</h2>
+        <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
+            {% for code, name in regions.items() %}
+            <div class="bg-white rounded-lg p-4 border border-gray-200">
+                <span class="inline-block bg-primary text-white text-xs font-bold px-2 py-1 rounded mr-2">{{ code }}</span>
+                <span class="text-gray-800">{{ name }}</span>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <div class="mt-12 text-center">
+        <p class="text-gray-600 mb-4">Need live monthly updates instead of a snapshot?</p>
+        <a href="{{ url_for('subscriber.live_intelligence') }}" class="inline-flex items-center text-primary hover:underline font-medium">
+            Learn about Live Market Intelligence
+            <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+            </svg>
+        </a>
+    </div>
+</div>
+{% endblock %}

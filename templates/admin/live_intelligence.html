@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+
+{% block title %}Manage Live Intelligence - FieldSight Africa{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="mb-8">
+        <h1 class="text-3xl font-bold text-gray-900">Live Intelligence Access</h1>
+        <p class="text-gray-600 mt-1">Manage enterprise Live Intelligence grants</p>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div class="lg:col-span-2">
+            <div class="bg-white rounded-xl shadow-sm border">
+                <div class="px-6 py-4 border-b">
+                    <h2 class="text-lg font-semibold text-gray-900">Active Grants</h2>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">User</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Regions</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Dates</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y">
+                            {% for grant in grants %}
+                            <tr>
+                                <td class="px-6 py-4">
+                                    <div class="text-sm font-medium text-gray-900">{{ grant.user.name }}</div>
+                                    <div class="text-xs text-gray-500">{{ grant.user.email }}</div>
+                                </td>
+                                <td class="px-6 py-4">
+                                    <div class="flex flex-wrap gap-1">
+                                        {% for r in grant.regions_selected %}
+                                        <span class="inline-block bg-primary text-white text-xs font-bold px-2 py-0.5 rounded">{{ r }}</span>
+                                        {% endfor %}
+                                    </div>
+                                    {% if grant.crops_selected %}
+                                    <div class="text-xs text-gray-500 mt-1">{{ grant.crops_selected | join(', ') }}</div>
+                                    {% endif %}
+                                </td>
+                                <td class="px-6 py-4">
+                                    <div class="text-sm text-gray-900">{{ grant.start_date.strftime('%Y-%m-%d') }}</div>
+                                    <div class="text-xs text-gray-500">to {{ grant.end_date.strftime('%Y-%m-%d') }}</div>
+                                </td>
+                                <td class="px-6 py-4">
+                                    {% if grant.is_valid() %}
+                                    <span class="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-medium">Active</span>
+                                    {% elif not grant.active %}
+                                    <span class="px-3 py-1 bg-gray-100 text-gray-500 rounded-full text-xs font-medium">Disabled</span>
+                                    {% else %}
+                                    <span class="px-3 py-1 bg-amber-100 text-amber-700 rounded-full text-xs font-medium">Expired</span>
+                                    {% endif %}
+                                </td>
+                                <td class="px-6 py-4">
+                                    <div class="flex gap-2">
+                                        <form action="{{ url_for('admin.toggle_live_intelligence', grant_id=grant.id) }}" method="POST" class="inline">
+                                            <button type="submit" class="text-xs px-3 py-1 rounded border {% if grant.active %}border-gray-300 text-gray-600 hover:bg-gray-50{% else %}border-green-300 text-green-600 hover:bg-green-50{% endif %}">
+                                                {% if grant.active %}Disable{% else %}Enable{% endif %}
+                                            </button>
+                                        </form>
+                                        <form action="{{ url_for('admin.delete_live_intelligence', grant_id=grant.id) }}" method="POST" class="inline" onsubmit="return confirm('Remove this access grant?');">
+                                            <button type="submit" class="text-xs px-3 py-1 rounded border border-red-300 text-red-600 hover:bg-red-50">Delete</button>
+                                        </form>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="5" class="px-6 py-8 text-center text-gray-500">No Live Intelligence grants yet</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="lg:col-span-1">
+            <div class="bg-white rounded-xl shadow-sm border p-6">
+                <h2 class="text-lg font-semibold text-gray-900 mb-4">Grant New Access</h2>
+                <form action="{{ url_for('admin.grant_live_intelligence') }}" method="POST" class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">User</label>
+                        <select name="user_id" required class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent">
+                            <option value="">Select user...</option>
+                            {% for user in users %}
+                            <option value="{{ user.id }}">{{ user.email }} ({{ user.name }})</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Regions</label>
+                        <div class="grid grid-cols-2 gap-2">
+                            {% for code, name in regions.items() %}
+                            <label class="flex items-center p-2 border border-gray-200 rounded hover:border-primary cursor-pointer">
+                                <input type="checkbox" name="regions" value="{{ code }}" class="mr-2 text-primary focus:ring-primary rounded">
+                                <span class="text-sm">{{ code }}</span>
+                            </label>
+                            {% endfor %}
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Crops (optional, comma-separated)</label>
+                        <input type="text" name="crops" placeholder="Maize, Rice, Cassava..." class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent">
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
+                            <input type="date" name="start_date" required class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">End Date</label>
+                            <input type="date" name="end_date" required class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent">
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Notes (optional)</label>
+                        <textarea name="notes" rows="2" placeholder="Contract reference, special terms..." class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"></textarea>
+                    </div>
+
+                    <button type="submit" class="w-full py-2 px-4 bg-primary text-white rounded-lg hover:bg-secondary transition font-medium">
+                        Grant Access
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

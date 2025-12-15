@@ -36,6 +36,7 @@
                     <div class="hidden md:ml-10 md:flex md:space-x-8">
                         <a href="{{ url_for('public.home') }}" class="text-gray-600 hover:text-primary px-3 py-2">Home</a>
                         <a href="{{ url_for('public.pricing') }}" class="text-gray-600 hover:text-primary px-3 py-2">Pricing</a>
+                        <a href="{{ url_for('subscriber.packs') }}" class="text-gray-600 hover:text-primary px-3 py-2">Data Packs</a>
                         {% if current_user.is_authenticated %}
                             <a href="{{ url_for('subscriber.datasets') }}" class="text-gray-600 hover:text-primary px-3 py-2">Datasets</a>
                         {% endif %}

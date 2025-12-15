@@ -6,7 +6,7 @@ import requests
 from datetime import datetime, timedelta
 from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify
 from flask_login import login_required, current_user
-from models import db, PaymentPlan, Subscription
+from models import db, PaymentPlan, Subscription, LicensedPack, License, Payment, NIGERIA_REGIONS
 
 payments_bp = Blueprint('payments', __name__)
 
@@ -288,3 +288,273 @@ def paystack_webhook():
         
     except Exception as e:
         return jsonify({'error': str(e)}), 400
+
+
+@payments_bp.route('/pack/<pack_code>/<provider>')
+@login_required
+def pack_checkout(pack_code, provider):
+    """Initiate one-time payment for a licensed data pack."""
+    pack = LicensedPack.query.filter_by(code=pack_code, active=True).first()
+    if not pack:
+        flash('Invalid data pack selected.', 'error')
+        return redirect(url_for('subscriber.packs'))
+    
+    current_month = datetime.utcnow().strftime('%Y-%m')
+    
+    return render_template('pack_checkout.html',
+                           pack=pack,
+                           provider=provider,
+                           current_month=current_month,
+                           regions=NIGERIA_REGIONS)
+
+
+@payments_bp.route('/pack/<pack_code>/<provider>/process', methods=['POST'])
+@login_required
+def process_pack_payment(pack_code, provider):
+    """Process one-time payment for a licensed data pack."""
+    pack = LicensedPack.query.filter_by(code=pack_code, active=True).first()
+    if not pack:
+        flash('Invalid data pack selected.', 'error')
+        return redirect(url_for('subscriber.packs'))
+    
+    regions = request.form.getlist('regions')
+    crops_text = request.form.get('crops', '')
+    crops = [c.strip() for c in crops_text.split(',') if c.strip()]
+    
+    if len(regions) == 0:
+        flash('Please select at least one region.', 'error')
+        return redirect(url_for('payments.pack_checkout', pack_code=pack_code, provider=provider))
+    
+    if len(regions) > pack.regions_allowed:
+        flash(f'You can select up to {pack.regions_allowed} region(s) with this pack.', 'error')
+        return redirect(url_for('payments.pack_checkout', pack_code=pack_code, provider=provider))
+    
+    if pack.crops_allowed and len(crops) > pack.crops_allowed:
+        flash(f'You can specify up to {pack.crops_allowed} crop(s) with this pack.', 'error')
+        return redirect(url_for('payments.pack_checkout', pack_code=pack_code, provider=provider))
+    
+    current_month = datetime.utcnow().strftime('%Y-%m')
+    
+    domain = os.environ.get('REPLIT_DEV_DOMAIN', request.host_url.rstrip('/'))
+    if not domain.startswith('http'):
+        domain = f'https://{domain}'
+    
+    if provider == 'stripe':
+        if not stripe.api_key:
+            flash('Stripe is not configured. Please contact support.', 'error')
+            return redirect(url_for('subscriber.packs'))
+        
+        try:
+            checkout_session = stripe.checkout.Session.create(
+                customer_email=current_user.email,
+                payment_method_types=['card'],
+                line_items=[{
+                    'price_data': {
+                        'currency': 'usd',
+                        'unit_amount': pack.price_usd * 100,
+                        'product_data': {
+                            'name': pack.name,
+                            'description': f'{pack.description} - {current_month} Snapshot',
+                        },
+                    },
+                    'quantity': 1,
+                }],
+                mode='payment',
+                success_url=f'{domain}/payment/pack/success?session_id={{CHECKOUT_SESSION_ID}}',
+                cancel_url=f'{domain}/packs',
+                metadata={
+                    'user_id': str(current_user.id),
+                    'pack_code': pack.code,
+                    'regions': ','.join(regions),
+                    'crops': ','.join(crops),
+                    'snapshot_month': current_month,
+                    'payment_type': 'licensed_pack'
+                }
+            )
+            return redirect(checkout_session.url)
+        except stripe.error.StripeError as e:
+            flash(f'Payment error: {str(e)}', 'error')
+            return redirect(url_for('subscriber.packs'))
+    
+    elif provider == 'paystack':
+        if not PAYSTACK_SECRET_KEY:
+            flash('Paystack is not configured. Please contact support.', 'error')
+            return redirect(url_for('subscriber.packs'))
+        
+        try:
+            headers = {
+                'Authorization': f'Bearer {PAYSTACK_SECRET_KEY}',
+                'Content-Type': 'application/json'
+            }
+            
+            data = {
+                'email': current_user.email,
+                'amount': pack.price_ngn * 100,
+                'currency': 'NGN',
+                'callback_url': f'{domain}/payment/pack/paystack/callback',
+                'metadata': {
+                    'user_id': str(current_user.id),
+                    'pack_code': pack.code,
+                    'regions': ','.join(regions),
+                    'crops': ','.join(crops),
+                    'snapshot_month': current_month,
+                    'payment_type': 'licensed_pack'
+                }
+            }
+            
+            response = requests.post(
+                'https://api.paystack.co/transaction/initialize',
+                headers=headers,
+                json=data
+            )
+            
+            result = response.json()
+            if result.get('status'):
+                return redirect(result['data']['authorization_url'])
+            else:
+                flash('Could not initialize payment. Please try again.', 'error')
+                return redirect(url_for('subscriber.packs'))
+                
+        except Exception as e:
+            flash(f'Payment error: {str(e)}', 'error')
+            return redirect(url_for('subscriber.packs'))
+    
+    flash('Invalid payment provider.', 'error')
+    return redirect(url_for('subscriber.packs'))
+
+
+@payments_bp.route('/payment/pack/success')
+@login_required
+def pack_payment_success():
+    """Handle successful Stripe payment for a licensed pack."""
+    session_id = request.args.get('session_id')
+    
+    if not session_id:
+        flash('Invalid payment session.', 'error')
+        return redirect(url_for('subscriber.licenses'))
+    
+    try:
+        session = stripe.checkout.Session.retrieve(session_id)
+        
+        if session.payment_status == 'paid':
+            existing_license = License.query.filter_by(
+                stripe_payment_intent_id=session.payment_intent
+            ).first()
+            
+            if not existing_license:
+                metadata = session.metadata
+                pack = LicensedPack.query.filter_by(code=metadata.get('pack_code')).first()
+                
+                if pack:
+                    regions = metadata.get('regions', '').split(',') if metadata.get('regions') else []
+                    crops = metadata.get('crops', '').split(',') if metadata.get('crops') else []
+                    
+                    license_record = License(
+                        user_id=current_user.id,
+                        licensed_pack_id=pack.id,
+                        regions_selected=regions,
+                        crops_selected=crops,
+                        snapshot_month=metadata.get('snapshot_month'),
+                        status='active',
+                        stripe_payment_intent_id=session.payment_intent
+                    )
+                    db.session.add(license_record)
+                    
+                    payment_record = Payment(
+                        user_id=current_user.id,
+                        provider='stripe',
+                        provider_reference=session.payment_intent,
+                        payment_type='licensed_pack',
+                        amount_usd=pack.price_usd,
+                        status='completed',
+                        metadata_json={
+                            'pack_code': pack.code,
+                            'regions': regions,
+                            'crops': crops,
+                            'snapshot_month': metadata.get('snapshot_month')
+                        }
+                    )
+                    db.session.add(payment_record)
+                    db.session.commit()
+            
+            flash('Your data pack license has been activated!', 'success')
+        else:
+            flash('Payment was not completed.', 'warning')
+            
+    except stripe.error.StripeError as e:
+        flash(f'Error verifying payment: {str(e)}', 'error')
+    
+    return redirect(url_for('subscriber.licenses'))
+
+
+@payments_bp.route('/payment/pack/paystack/callback')
+@login_required
+def pack_paystack_callback():
+    """Handle successful Paystack payment for a licensed pack."""
+    reference = request.args.get('reference')
+    
+    if not reference:
+        flash('Invalid payment reference.', 'error')
+        return redirect(url_for('subscriber.licenses'))
+    
+    try:
+        headers = {
+            'Authorization': f'Bearer {PAYSTACK_SECRET_KEY}'
+        }
+        
+        response = requests.get(
+            f'https://api.paystack.co/transaction/verify/{reference}',
+            headers=headers
+        )
+        
+        result = response.json()
+        
+        if result.get('status') and result['data']['status'] == 'success':
+            existing_license = License.query.filter_by(
+                paystack_reference=reference
+            ).first()
+            
+            if not existing_license:
+                metadata = result['data'].get('metadata', {})
+                pack = LicensedPack.query.filter_by(code=metadata.get('pack_code')).first()
+                
+                if pack:
+                    regions = metadata.get('regions', '').split(',') if metadata.get('regions') else []
+                    crops = metadata.get('crops', '').split(',') if metadata.get('crops') else []
+                    
+                    license_record = License(
+                        user_id=current_user.id,
+                        licensed_pack_id=pack.id,
+                        regions_selected=regions,
+                        crops_selected=crops,
+                        snapshot_month=metadata.get('snapshot_month'),
+                        status='active',
+                        paystack_reference=reference
+                    )
+                    db.session.add(license_record)
+                    
+                    payment_record = Payment(
+                        user_id=current_user.id,
+                        provider='paystack',
+                        provider_reference=reference,
+                        payment_type='licensed_pack',
+                        amount_ngn=pack.price_ngn,
+                        status='completed',
+                        metadata_json={
+                            'pack_code': pack.code,
+                            'regions': regions,
+                            'crops': crops,
+                            'snapshot_month': metadata.get('snapshot_month')
+                        }
+                    )
+                    db.session.add(payment_record)
+                    db.session.commit()
+            
+            flash('Your data pack license has been activated!', 'success')
+        else:
+            flash('Payment verification failed.', 'error')
+            
+    except Exception as e:
+        flash(f'Error verifying payment: {str(e)}', 'error')
+    
+    return redirect(url_for('subscriber.licenses'))

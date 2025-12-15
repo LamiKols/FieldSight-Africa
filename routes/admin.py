@@ -188,3 +188,93 @@ def user_detail(user_id):
     user = User.query.get_or_404(user_id)
     exports = ExportLog.query.filter_by(user_id=user_id).order_by(ExportLog.exported_at.desc()).all()
     return render_template('admin/user_detail.html', user=user, exports=exports)
+
+
+@admin_bp.route('/live-intelligence')
+@login_required
+@admin_required
+def live_intelligence():
+    grants = LiveIntelligenceAccess.query.order_by(LiveIntelligenceAccess.created_at.desc()).all()
+    users = User.query.filter_by(role='subscriber').order_by(User.email).all()
+    return render_template('admin/live_intelligence.html', 
+                           grants=grants, 
+                           users=users,
+                           regions=NIGERIA_REGIONS)
+
+
+@admin_bp.route('/live-intelligence/grant', methods=['POST'])
+@login_required
+@admin_required
+def grant_live_intelligence():
+    user_id = request.form.get('user_id')
+    regions = request.form.getlist('regions')
+    crops_text = request.form.get('crops', '')
+    crops = [c.strip() for c in crops_text.split(',') if c.strip()]
+    start_date = request.form.get('start_date')
+    end_date = request.form.get('end_date')
+    notes = request.form.get('notes', '')
+    
+    if not user_id or not start_date or not end_date:
+        flash('Please fill in all required fields.', 'error')
+        return redirect(url_for('admin.live_intelligence'))
+    
+    if len(regions) == 0:
+        flash('Please select at least one region.', 'error')
+        return redirect(url_for('admin.live_intelligence'))
+    
+    try:
+        start = datetime.strptime(start_date, '%Y-%m-%d')
+        end = datetime.strptime(end_date, '%Y-%m-%d')
+        
+        if end <= start:
+            flash('End date must be after start date.', 'error')
+            return redirect(url_for('admin.live_intelligence'))
+        
+        grant = LiveIntelligenceAccess(
+            user_id=int(user_id),
+            regions_allowed=len(regions),
+            crops_allowed=len(crops) if crops else None,
+            regions_selected=regions,
+            crops_selected=crops,
+            start_date=start,
+            end_date=end,
+            active=True,
+            notes=notes
+        )
+        db.session.add(grant)
+        db.session.commit()
+        
+        user = User.query.get(user_id)
+        flash(f'Live Intelligence access granted to {user.email}.', 'success')
+        
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error granting access: {str(e)}', 'error')
+    
+    return redirect(url_for('admin.live_intelligence'))
+
+
+@admin_bp.route('/live-intelligence/<int:grant_id>/toggle', methods=['POST'])
+@login_required
+@admin_required
+def toggle_live_intelligence(grant_id):
+    grant = LiveIntelligenceAccess.query.get_or_404(grant_id)
+    grant.active = not grant.active
+    db.session.commit()
+    
+    status = 'activated' if grant.active else 'deactivated'
+    flash(f'Access {status} for {grant.user.email}.', 'success')
+    return redirect(url_for('admin.live_intelligence'))
+
+
+@admin_bp.route('/live-intelligence/<int:grant_id>/delete', methods=['POST'])
+@login_required
+@admin_required
+def delete_live_intelligence(grant_id):
+    grant = LiveIntelligenceAccess.query.get_or_404(grant_id)
+    email = grant.user.email
+    db.session.delete(grant)
+    db.session.commit()
+    
+    flash(f'Access removed for {email}.', 'success')
+    return redirect(url_for('admin.live_intelligence'))
