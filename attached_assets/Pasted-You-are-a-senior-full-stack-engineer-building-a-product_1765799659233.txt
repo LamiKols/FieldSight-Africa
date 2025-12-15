@@ -1,0 +1,387 @@
+You are a senior full-stack engineer building a production-ready SaaS MVP whose sole purpose is to monetise monthly agricultural intelligence datasets via subscriptions.
+
+This is not a marketplace, analytics dashboard, or AI tool.
+
+It is a subscription-controlled data access platform selling time-sensitive intelligence.
+
+CORE PRODUCT PRINCIPLE (NON-NEGOTIABLE)
+
+Plans, datasets, and access rules are identical regardless of payment method.
+Stripe and Paystack are only payment rails — never product variants.
+
+TECH STACK (MANDATORY)
+
+Backend: Python Flask
+
+ORM: SQLAlchemy
+
+Database: PostgreSQL (Supabase compatible)
+
+Auth: Flask-Login
+
+Payments:
+
+Stripe (primary, international)
+
+Paystack (regional, Nigeria)
+
+Frontend: Jinja2 + TailwindCSS
+
+Hosting: Replit
+
+Config: .env
+
+USER ROLES
+Admin
+
+Upload monthly datasets
+
+Publish datasets
+
+Manage users & subscriptions
+
+View exports
+
+Subscriber
+
+View dataset catalogue
+
+Download datasets (within plan limits)
+
+DATASETS SUPPORTED (MVP ONLY)
+
+Support exactly four datasets:
+
+actor_activity_status
+
+market_changes
+
+crop_availability_status
+
+trust_index
+
+Each dataset:
+
+Is delivered monthly
+
+Is versioned by YYYY-MM
+
+Expires at month-end
+
+DATABASE MODELS (REQUIRED)
+User
+
+id
+
+name
+
+email
+
+password_hash
+
+role
+
+created_at
+
+Subscription
+
+id
+
+user_id
+
+provider (stripe | paystack)
+
+provider_subscription_id
+
+plan_code
+
+status
+
+current_period_end
+
+PaymentPlan
+
+id
+
+code (STARTER, INTELLIGENCE)
+
+name
+
+stripe_price_id
+
+paystack_plan_code
+
+monthly_export_limit
+
+allowed_datasets (JSON)
+
+created_at
+
+Dataset
+
+id
+
+code
+
+name
+
+description
+
+DatasetMonth
+
+id
+
+dataset_id
+
+month (YYYY-MM)
+
+published
+
+uploaded_at
+
+DatasetRecord
+
+id
+
+dataset_month_id
+
+record_json
+
+ExportLog
+
+id
+
+user_id
+
+dataset_month_id
+
+rows_exported
+
+exported_at
+
+PAYMENT PLAN SEEDING (MANDATORY)
+Define PaymentPlan model and include this idempotent seed function
+def seed_payment_plans():
+    plans = [
+        {
+            "code": "STARTER",
+            "name": "Starter",
+            "stripe_price_id": os.getenv("STRIPE_STARTER_PRICE_ID"),
+            "paystack_plan_code": os.getenv("PAYSTACK_STARTER_PLAN_CODE"),
+            "monthly_export_limit": 5000,
+            "allowed_datasets": [
+                "actor_activity_status"
+            ],
+        },
+        {
+            "code": "INTELLIGENCE",
+            "name": "Intelligence",
+            "stripe_price_id": os.getenv("STRIPE_INTELLIGENCE_PRICE_ID"),
+            "paystack_plan_code": os.getenv("PAYSTACK_INTELLIGENCE_PLAN_CODE"),
+            "monthly_export_limit": 50000,
+            "allowed_datasets": [
+                "actor_activity_status",
+                "market_changes",
+                "crop_availability_status",
+                "trust_index"
+            ],
+        }
+    ]
+
+    for plan in plans:
+        existing = PaymentPlan.query.filter_by(code=plan["code"]).first()
+        if not existing:
+            db.session.add(PaymentPlan(**plan))
+
+    db.session.commit()
+
+Execute safely on startup
+with app.app_context():
+    db.create_all()
+    seed_payment_plans()
+
+SUBSCRIPTION PLANS (PRODUCT LOGIC)
+Free
+
+View dataset catalogue
+
+No downloads
+
+Starter
+
+Access 1 dataset per month
+
+Export limit enforced
+
+Intelligence
+
+Access all datasets
+
+Higher export limits
+
+PAYMENT FLOW (CLEAN & UNIFIED)
+Pricing Page
+
+Show plans once
+
+Each plan has two buttons:
+
+Pay with Card (Stripe – International)
+
+Pay with Paystack (Nigeria)
+
+Stripe
+
+Create Checkout Session
+
+On success:
+
+Create Subscription
+
+provider = stripe
+
+map price → internal plan_code
+
+Paystack
+
+Create subscription via Paystack API
+
+On success:
+
+Create Subscription
+
+provider = paystack
+
+map plan_code → internal plan_code
+
+ACCESS CONTROL (PAYMENT-AGNOSTIC)
+
+When user requests dataset or export:
+
+Subscription exists
+
+Status = active
+
+Period not expired
+
+Dataset allowed by plan
+
+Export limit not exceeded
+
+Never branch logic by payment provider.
+
+ADMIN DATASET UPLOAD FLOW
+
+Admin selects dataset
+
+Uploads CSV
+
+Validate headers
+
+Store records as JSON
+
+Publish dataset month
+
+Dataset becomes sellable
+
+Prevent duplicate uploads for same dataset + month unless admin override.
+
+REQUIRED ROUTES
+Public
+
+/
+
+/pricing
+
+Auth
+
+/login
+
+/register
+
+/logout
+
+Subscriber
+
+/dashboard
+
+/datasets
+
+/datasets/<dataset>/<month>
+
+/export/<dataset_month_id>
+
+Admin
+
+/admin
+
+/admin/upload
+
+/admin/datasets
+
+/admin/users
+
+UX REQUIREMENTS
+
+Clearly show:
+
+Dataset name
+
+Month
+
+Last updated
+
+Access eligibility
+
+Warn when:
+
+Data expires
+
+Export limit reached
+
+Subscription inactive
+
+SECURITY REQUIREMENTS
+
+Protect admin routes
+
+Validate CSV uploads
+
+Sanitize inputs
+
+No secrets in code
+
+Keys only via .env
+
+FUTURE-READY (COMMENT ONLY)
+
+Webhooks reconciliation
+
+Annual billing
+
+API access
+
+Revenue sharing
+
+Data refresh automation
+
+PRODUCT PHILOSOPHY (COMMENT IN CODE)
+
+“This platform sells time-sensitive agricultural intelligence, not static directories.
+Access expires because intelligence decays.”
+
+FINAL INSTRUCTION
+
+Generate the entire working Flask application:
+
+Ready to run on Replit
+
+Stripe + Paystack integrated cleanly
+
+Payment plans seeded automatically
+
+Subscription-enforced dataset access
+
+Admin-managed monthly data uploads
+
+This is a commercial MVP, not a demo.
