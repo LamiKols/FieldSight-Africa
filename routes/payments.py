@@ -209,11 +209,14 @@ def stripe_webhook():
     sig_header = request.headers.get('Stripe-Signature')
     endpoint_secret = os.environ.get('STRIPE_WEBHOOK_SECRET')
     
+    if not endpoint_secret:
+        return jsonify({'error': 'Webhook secret not configured'}), 500
+    
+    if not sig_header:
+        return jsonify({'error': 'Missing signature'}), 400
+    
     try:
-        if endpoint_secret:
-            event = stripe.Webhook.construct_event(payload, sig_header, endpoint_secret)
-        else:
-            event = stripe.Event.construct_from(request.get_json(), stripe.api_key)
+        event = stripe.Webhook.construct_event(payload, sig_header, endpoint_secret)
         
         if event['type'] == 'customer.subscription.updated':
             subscription_data = event['data']['object']
@@ -246,6 +249,27 @@ def stripe_webhook():
 
 @payments_bp.route('/webhook/paystack', methods=['POST'])
 def paystack_webhook():
+    import hashlib
+    import hmac
+    
+    paystack_secret = os.environ.get('PAYSTACK_SECRET_KEY')
+    if not paystack_secret:
+        return jsonify({'error': 'Paystack secret not configured'}), 500
+    
+    signature = request.headers.get('X-Paystack-Signature')
+    if not signature:
+        return jsonify({'error': 'Missing signature'}), 400
+    
+    payload = request.get_data()
+    computed_signature = hmac.new(
+        paystack_secret.encode('utf-8'),
+        payload,
+        hashlib.sha512
+    ).hexdigest()
+    
+    if not hmac.compare_digest(signature, computed_signature):
+        return jsonify({'error': 'Invalid signature'}), 400
+    
     try:
         data = request.get_json()
         event = data.get('event')

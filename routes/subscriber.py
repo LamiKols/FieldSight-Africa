@@ -99,6 +99,11 @@ def view_dataset_month(dataset_code, month):
 @subscription_required
 def export_dataset(dataset_month_id):
     dataset_month = DatasetMonth.query.get_or_404(dataset_month_id)
+    
+    if not dataset_month.published:
+        flash('This dataset is not available for export.', 'error')
+        return redirect(url_for('subscriber.datasets'))
+    
     dataset = dataset_month.dataset
     
     if not current_user.can_access_dataset(dataset.code):
