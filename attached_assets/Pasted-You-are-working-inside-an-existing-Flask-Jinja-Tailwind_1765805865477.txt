@@ -1,0 +1,132 @@
+You are working inside an existing Flask + Jinja + TailwindCSS application that already renders:
+
+Licensed Data Packs (/packs)
+
+Live Market Intelligence (/live-intelligence)
+
+The platform logic, pricing, and data models are already correct.
+Your task is to apply small, high-impact copy and UX refinements only — no structural or backend changes.
+
+OBJECTIVE
+
+Improve clarity, legal precision, and conversion by refining copy and micro-UX around:
+
+Licensed Data Pack ownership language
+
+Crop scope clarity
+
+Pack → Live Intelligence upsell signalling
+
+Live Intelligence CTA friction reduction
+
+Do not change pricing, layout structure, routes, or payment logic.
+
+CHANGE 1 — Refine “What You Get” Copy (Legal Precision)
+Current intent
+
+Avoid ambiguous “own forever” language.
+
+Replace existing “What You Get” paragraph with:
+
+What You Get
+Licensed data packs provide a permanent licensed snapshot of the intelligence data as of the stated month (e.g. 2025-12).
+This data does not update.
+For ongoing monthly updates and market movement, request Live Market Intelligence.
+
+Requirements
+
+Keep snapshot month visible
+
+Use the phrase “licensed snapshot”
+
+Do not imply future updates
+
+CHANGE 2 — Clarify Crop Scope on Each Pack Card
+
+On each Licensed Pack card (Core, Expanded, National), add a short line under the pack description:
+
+Add this line verbatim:
+
+Crop coverage is selected at purchase.
+
+Styling
+
+Smaller text
+
+Muted colour
+
+Same placement across all cards
+
+Purpose:
+
+Prevents “which crops?” confusion
+
+Reinforces scope locking
+
+CHANGE 3 — Add a Conversion Bridge Between Packs and Live Intelligence
+
+Immediately below the Licensed Packs section and above the Live Intelligence section, insert a single-line bridge:
+
+Most customers start with a snapshot, then upgrade to Live Intelligence once active.
+
+Styling
+
+Subtle
+
+Centered
+
+Not a CTA
+
+Feels advisory, not salesy
+
+Purpose:
+
+Normalises upsell
+
+Reduces hesitation
+
+CHANGE 4 — Reduce Friction on Live Intelligence CTA
+
+On the Live Market Intelligence section:
+
+Button
+
+Keep existing button text:
+
+Request Information
+
+Add subtext directly below the button:
+
+Annual license · Custom scope · No obligation
+
+Styling
+
+Small text
+
+Muted
+
+Directly associated with CTA
+
+Purpose:
+
+Reduces psychological friction
+
+Signals seriousness without pressure
+
+ACCEPTANCE CRITERIA
+
+No pricing changes
+
+No route changes
+
+No backend logic changes
+
+No new forms or models
+
+Language reflects licensed data, not SaaS
+
+UI remains clean and enterprise-credible
+
+FINAL INSTRUCTION
+
+Apply these copy and UX refinements cleanly to the existing templates and return the updated pages.
