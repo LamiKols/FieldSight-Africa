@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+
+{% block title %}Pricing - AgriIntel{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+    <div class="text-center mb-12">
+        <h1 class="text-4xl font-bold text-gray-900 mb-4">Choose Your Plan</h1>
+        <p class="text-xl text-gray-600">Access agricultural intelligence that powers better decisions</p>
+    </div>
+
+    <div class="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
+        <div class="bg-white rounded-2xl shadow-sm border p-8">
+            <h3 class="text-xl font-semibold text-gray-900 mb-2">Free</h3>
+            <div class="mb-6">
+                <span class="text-4xl font-bold text-gray-900">$0</span>
+                <span class="text-gray-600">/month</span>
+            </div>
+            <ul class="space-y-3 mb-8">
+                <li class="flex items-center text-gray-600">
+                    <svg class="w-5 h-5 text-green-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                    </svg>
+                    View dataset catalogue
+                </li>
+                <li class="flex items-center text-gray-400">
+                    <svg class="w-5 h-5 text-gray-300 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                    No downloads
+                </li>
+                <li class="flex items-center text-gray-400">
+                    <svg class="w-5 h-5 text-gray-300 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                    No exports
+                </li>
+            </ul>
+            {% if current_user.is_authenticated %}
+                <span class="block w-full text-center py-3 px-4 rounded-lg bg-gray-100 text-gray-600">Current Plan</span>
+            {% else %}
+                <a href="{{ url_for('auth.register') }}" class="block w-full text-center py-3 px-4 rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 transition">
+                    Sign Up Free
+                </a>
+            {% endif %}
+        </div>
+
+        {% for plan in plans %}
+        <div class="bg-white rounded-2xl shadow-lg border-2 {% if plan.code == 'INTELLIGENCE' %}border-primary{% else %}border-transparent{% endif %} p-8 relative">
+            {% if plan.code == 'INTELLIGENCE' %}
+            <div class="absolute -top-4 left-1/2 transform -translate-x-1/2">
+                <span class="bg-primary text-white px-4 py-1 rounded-full text-sm font-medium">Most Popular</span>
+            </div>
+            {% endif %}
+            
+            <h3 class="text-xl font-semibold text-gray-900 mb-2">{{ plan.name }}</h3>
+            <div class="mb-6">
+                <span class="text-4xl font-bold text-gray-900">
+                    {% if plan.code == 'STARTER' %}$29{% else %}$99{% endif %}
+                </span>
+                <span class="text-gray-600">/month</span>
+            </div>
+            
+            <ul class="space-y-3 mb-8">
+                <li class="flex items-center text-gray-600">
+                    <svg class="w-5 h-5 text-green-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                    </svg>
+                    {{ plan.allowed_datasets|length }} dataset{% if plan.allowed_datasets|length > 1 %}s{% endif %}
+                </li>
+                <li class="flex items-center text-gray-600">
+                    <svg class="w-5 h-5 text-green-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                    </svg>
+                    {{ "{:,}".format(plan.monthly_export_limit) }} rows/month
+                </li>
+                <li class="flex items-center text-gray-600">
+                    <svg class="w-5 h-5 text-green-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                    </svg>
+                    CSV exports
+                </li>
+                <li class="flex items-center text-gray-600">
+                    <svg class="w-5 h-5 text-green-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                    </svg>
+                    Monthly updates
+                </li>
+            </ul>
+
+            <div class="space-y-3">
+                {% if current_user.is_authenticated %}
+                    <a href="{{ url_for('payments.stripe_checkout', plan_code=plan.code) }}" class="block w-full text-center py-3 px-4 rounded-lg bg-primary text-white hover:bg-secondary transition">
+                        Pay with Card
+                    </a>
+                    <a href="{{ url_for('payments.paystack_checkout', plan_code=plan.code) }}" class="block w-full text-center py-3 px-4 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition">
+                        Pay with Paystack (Nigeria)
+                    </a>
+                {% else %}
+                    <a href="{{ url_for('auth.register') }}" class="block w-full text-center py-3 px-4 rounded-lg bg-primary text-white hover:bg-secondary transition">
+                        Get Started
+                    </a>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <div class="mt-16 text-center">
+        <h2 class="text-2xl font-bold text-gray-900 mb-4">Dataset Access by Plan</h2>
+        <div class="max-w-3xl mx-auto overflow-x-auto">
+            <table class="w-full bg-white rounded-lg shadow-sm">
+                <thead>
+                    <tr class="border-b">
+                        <th class="px-6 py-4 text-left text-gray-600">Dataset</th>
+                        <th class="px-6 py-4 text-center text-gray-600">Free</th>
+                        <th class="px-6 py-4 text-center text-gray-600">Starter</th>
+                        <th class="px-6 py-4 text-center text-gray-600">Intelligence</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr class="border-b">
+                        <td class="px-6 py-4 text-gray-900">Actor Activity Status</td>
+                        <td class="px-6 py-4 text-center text-gray-400">View Only</td>
+                        <td class="px-6 py-4 text-center text-green-600">Full Access</td>
+                        <td class="px-6 py-4 text-center text-green-600">Full Access</td>
+                    </tr>
+                    <tr class="border-b">
+                        <td class="px-6 py-4 text-gray-900">Market Changes</td>
+                        <td class="px-6 py-4 text-center text-gray-400">View Only</td>
+                        <td class="px-6 py-4 text-center text-gray-400">-</td>
+                        <td class="px-6 py-4 text-center text-green-600">Full Access</td>
+                    </tr>
+                    <tr class="border-b">
+                        <td class="px-6 py-4 text-gray-900">Crop Availability Status</td>
+                        <td class="px-6 py-4 text-center text-gray-400">View Only</td>
+                        <td class="px-6 py-4 text-center text-gray-400">-</td>
+                        <td class="px-6 py-4 text-center text-green-600">Full Access</td>
+                    </tr>
+                    <tr>
+                        <td class="px-6 py-4 text-gray-900">Trust Index</td>
+                        <td class="px-6 py-4 text-center text-gray-400">View Only</td>
+                        <td class="px-6 py-4 text-center text-gray-400">-</td>
+                        <td class="px-6 py-4 text-center text-green-600">Full Access</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

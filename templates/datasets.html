@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+
+{% block title %}Datasets - AgriIntel{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="mb-8">
+        <h1 class="text-3xl font-bold text-gray-900">Dataset Catalogue</h1>
+        <p class="text-gray-600 mt-1">Browse available agricultural intelligence datasets</p>
+    </div>
+
+    {% if not plan %}
+    <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-8">
+        <div class="flex items-center">
+            <svg class="w-5 h-5 text-blue-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            <p class="text-blue-800">
+                You're on the free plan. <a href="{{ url_for('public.pricing') }}" class="underline font-medium">Upgrade</a> to download datasets.
+            </p>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="space-y-8">
+        {% for info in dataset_info %}
+        <div class="bg-white rounded-xl shadow-sm border overflow-hidden">
+            <div class="p-6 border-b bg-gray-50">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h2 class="text-xl font-semibold text-gray-900">{{ info.dataset.name }}</h2>
+                        <p class="text-gray-600 mt-1">{{ info.dataset.description }}</p>
+                    </div>
+                    {% if info.can_access %}
+                        <span class="px-4 py-2 bg-green-100 text-green-700 rounded-lg text-sm font-medium">Full Access</span>
+                    {% else %}
+                        <span class="px-4 py-2 bg-gray-100 text-gray-600 rounded-lg text-sm font-medium">View Only</span>
+                    {% endif %}
+                </div>
+            </div>
+            
+            {% if info.months %}
+            <div class="p-6">
+                <h3 class="text-sm font-medium text-gray-500 uppercase tracking-wide mb-4">Available Months</h3>
+                <div class="grid sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                    {% for month in info.months %}
+                    <div class="border rounded-lg p-4 {% if info.can_access %}hover:border-primary cursor-pointer{% endif %}">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="font-medium text-gray-900">{{ month.month }}</p>
+                                <p class="text-xs text-gray-500">Updated: {{ month.uploaded_at.strftime('%b %d') }}</p>
+                            </div>
+                            {% if info.can_access %}
+                                <a href="{{ url_for('subscriber.view_dataset_month', dataset_code=info.dataset.code, month=month.month) }}" 
+                                   class="text-primary hover:underline text-sm">View</a>
+                            {% else %}
+                                <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+                                </svg>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% else %}
+            <div class="p-6 text-center text-gray-500">
+                <p>No data available for this dataset yet.</p>
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+
+{% block title %}{{ dataset.name }} - {{ dataset_month.month }} - AgriIntel{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="mb-6">
+        <a href="{{ url_for('subscriber.datasets') }}" class="text-primary hover:underline text-sm">&larr; Back to Datasets</a>
+    </div>
+
+    <div class="flex items-center justify-between mb-8">
+        <div>
+            <h1 class="text-3xl font-bold text-gray-900">{{ dataset.name }}</h1>
+            <p class="text-gray-600 mt-1">Month: {{ dataset_month.month }} | Records: {{ "{:,}".format(total_records) }}</p>
+        </div>
+        <div class="flex items-center space-x-4">
+            {% if remaining_exports >= total_records %}
+                <a href="{{ url_for('subscriber.export_dataset', dataset_month_id=dataset_month.id) }}" 
+                   class="bg-primary text-white px-6 py-2 rounded-lg hover:bg-secondary transition flex items-center">
+                    <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                    </svg>
+                    Export CSV
+                </a>
+            {% else %}
+                <span class="text-red-600 text-sm">Export limit: {{ "{:,}".format(remaining_exports) }} rows remaining</span>
+            {% endif %}
+        </div>
+    </div>
+
+    {% if not is_current_month %}
+    <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
+        <div class="flex">
+            <svg class="w-5 h-5 text-yellow-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+            </svg>
+            <p class="text-yellow-800">This is archived data from {{ dataset_month.month }}. Intelligence value may have decayed.</p>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="bg-white rounded-xl shadow-sm border overflow-hidden">
+        <div class="p-4 bg-gray-50 border-b">
+            <div class="flex items-center justify-between">
+                <p class="text-sm text-gray-600">Showing {{ records|length }} of {{ "{:,}".format(total_records) }} records</p>
+                <p class="text-sm text-gray-600">
+                    Export limit: {{ "{:,}".format(remaining_exports) }} / {{ "{:,}".format(plan.monthly_export_limit) }} rows remaining
+                </p>
+            </div>
+        </div>
+
+        <div class="overflow-x-auto">
+            {% if records %}
+                {% set first_record = records[0].record_json %}
+                {% if first_record is string %}
+                    {% set first_record = first_record | tojson | safe %}
+                {% endif %}
+                <table class="w-full">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            {% for key in first_record.keys() %}
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ key }}</th>
+                            {% endfor %}
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-200">
+                        {% for record in records %}
+                        <tr class="hover:bg-gray-50">
+                            {% for value in record.record_json.values() %}
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ value }}</td>
+                            {% endfor %}
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            {% else %}
+                <div class="p-8 text-center text-gray-500">
+                    No records found in this dataset.
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

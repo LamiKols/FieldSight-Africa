@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - AgriIntel{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="mb-8">
+        <h1 class="text-3xl font-bold text-gray-900">Welcome, {{ current_user.name }}</h1>
+        <p class="text-gray-600 mt-1">Access your agricultural intelligence data</p>
+    </div>
+
+    <div class="grid md:grid-cols-3 gap-6 mb-8">
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <h3 class="text-sm font-medium text-gray-500 uppercase tracking-wide">Subscription</h3>
+            {% if subscription %}
+                <p class="text-2xl font-bold text-primary mt-2">{{ plan.name if plan else 'Active' }}</p>
+                <p class="text-sm text-gray-600 mt-1">Expires: {{ subscription.current_period_end.strftime('%B %d, %Y') }}</p>
+            {% else %}
+                <p class="text-2xl font-bold text-gray-400 mt-2">Free</p>
+                <a href="{{ url_for('public.pricing') }}" class="text-sm text-primary hover:underline">Upgrade now</a>
+            {% endif %}
+        </div>
+
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <h3 class="text-sm font-medium text-gray-500 uppercase tracking-wide">Monthly Exports</h3>
+            <p class="text-2xl font-bold text-gray-900 mt-2">
+                {{ "{:,}".format(monthly_exports) }}
+                {% if plan %}
+                    <span class="text-lg font-normal text-gray-500">/ {{ "{:,}".format(plan.monthly_export_limit) }}</span>
+                {% endif %}
+            </p>
+            {% if plan %}
+                <div class="mt-2 bg-gray-200 rounded-full h-2">
+                    <div class="bg-primary rounded-full h-2" style="width: {{ (monthly_exports / plan.monthly_export_limit * 100)|int }}%"></div>
+                </div>
+            {% endif %}
+        </div>
+
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <h3 class="text-sm font-medium text-gray-500 uppercase tracking-wide">Datasets Access</h3>
+            {% if plan %}
+                <p class="text-2xl font-bold text-gray-900 mt-2">{{ plan.allowed_datasets|length }} of 4</p>
+                <p class="text-sm text-gray-600 mt-1">datasets available</p>
+            {% else %}
+                <p class="text-2xl font-bold text-gray-400 mt-2">View Only</p>
+                <p class="text-sm text-gray-600 mt-1">No download access</p>
+            {% endif %}
+        </div>
+    </div>
+
+    {% if subscription and subscription.current_period_end.strftime('%Y-%m') == current_month %}
+    <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-8">
+        <div class="flex">
+            <svg class="w-5 h-5 text-yellow-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+            </svg>
+            <p class="text-yellow-800">Your subscription expires at the end of this month. Data access will be limited after expiration.</p>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="bg-white rounded-xl shadow-sm border">
+        <div class="p-6 border-b">
+            <h2 class="text-xl font-semibold text-gray-900">Available Datasets</h2>
+        </div>
+        <div class="divide-y">
+            {% for ds in datasets %}
+            <div class="p-6 flex items-center justify-between">
+                <div>
+                    <h3 class="font-medium text-gray-900">{{ ds.name }}</h3>
+                    <p class="text-sm text-gray-600">{{ ds.description }}</p>
+                </div>
+                <div class="flex items-center space-x-4">
+                    {% if current_user.can_access_dataset(ds.code) %}
+                        <span class="px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm">Access Granted</span>
+                    {% else %}
+                        <span class="px-3 py-1 bg-gray-100 text-gray-600 rounded-full text-sm">Upgrade Required</span>
+                    {% endif %}
+                    <a href="{{ url_for('subscriber.datasets') }}" class="text-primary hover:underline">View</a>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endblock %}

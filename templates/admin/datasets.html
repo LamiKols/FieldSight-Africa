@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+
+{% block title %}Manage Datasets - AgriIntel{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="flex items-center justify-between mb-8">
+        <div>
+            <h1 class="text-3xl font-bold text-gray-900">Manage Datasets</h1>
+            <p class="text-gray-600 mt-1">View and publish monthly datasets</p>
+        </div>
+        <a href="{{ url_for('admin.upload') }}" class="bg-primary text-white px-6 py-2 rounded-lg hover:bg-secondary transition">
+            Upload New
+        </a>
+    </div>
+
+    <div class="bg-white rounded-xl shadow-sm border">
+        <div class="overflow-x-auto">
+            <table class="w-full">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Dataset</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Month</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Records</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Uploaded</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y">
+                    {% for dm in dataset_months %}
+                    <tr>
+                        <td class="px-6 py-4 text-sm font-medium text-gray-900">{{ dm.dataset.name }}</td>
+                        <td class="px-6 py-4 text-sm text-gray-600">{{ dm.month }}</td>
+                        <td class="px-6 py-4 text-sm text-gray-600">{{ dm.records|length }}</td>
+                        <td class="px-6 py-4 text-sm text-gray-500">{{ dm.uploaded_at.strftime('%Y-%m-%d') }}</td>
+                        <td class="px-6 py-4">
+                            {% if dm.published %}
+                                <span class="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-medium">Published</span>
+                            {% else %}
+                                <span class="px-3 py-1 bg-yellow-100 text-yellow-700 rounded-full text-xs font-medium">Draft</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-6 py-4">
+                            {% if dm.published %}
+                                <form method="POST" action="{{ url_for('admin.unpublish_dataset', dataset_month_id=dm.id) }}" class="inline">
+                                    <button type="submit" class="text-yellow-600 hover:underline text-sm">Unpublish</button>
+                                </form>
+                            {% else %}
+                                <form method="POST" action="{{ url_for('admin.publish_dataset', dataset_month_id=dm.id) }}" class="inline">
+                                    <button type="submit" class="text-primary hover:underline text-sm">Publish</button>
+                                </form>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="6" class="px-6 py-8 text-center text-gray-500">
+                            No datasets uploaded yet. <a href="{{ url_for('admin.upload') }}" class="text-primary hover:underline">Upload your first dataset</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
