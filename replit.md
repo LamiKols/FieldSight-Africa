@@ -45,6 +45,16 @@ A subscription-controlled data access platform selling time-sensitive agricultur
 - **DatasetMonth:** id, dataset_id, month, published, uploaded_at
 - **DatasetRecord:** id, dataset_month_id, record_json
 - **ExportLog:** id, user_id, dataset_month_id, rows_exported, exported_at
+- **ViewLog:** id, user_id, dataset_month_id, viewed_at (for rate limiting and analytics)
+
+## Anti-Scraping Protections
+- Text selection disabled on dataset tables (CSS no-select)
+- Right-click context menu blocked on tables
+- Copy/cut/select-all keyboard shortcuts intercepted
+- Rate limiting: 30 dataset views per minute per user
+- View logging: All dataset page views tracked in ViewLog table
+- Watermark: User email displayed on dataset pages
+- Usage notice: "Licensed use only" warning above tables
 
 ## Subscription Plans
 - **Free:** View dataset catalogue only, no downloads
