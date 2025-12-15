@@ -1,4 +1,4 @@
-# Field Sight Africa - Agricultural Intelligence Platform
+# FieldSight Africa - Agricultural Intelligence Platform
 
 ## Overview
 A subscription-controlled data access platform selling time-sensitive agricultural intelligence datasets. This platform monetises monthly agricultural intelligence via subscriptions using Stripe (international) and Paystack (Nigeria).
