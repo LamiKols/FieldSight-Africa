@@ -1,0 +1,334 @@
+You are a senior full-stack engineer working inside an existing Flask + SQLAlchemy + PostgreSQL application that is already live as a subscription-controlled agricultural intelligence platform.
+
+The platform currently supports:
+
+Free / Starter / Intelligence subscriptions
+
+Monthly time-sensitive datasets
+
+CSV exports with limits
+
+Stripe + Paystack
+
+Admin uploads
+
+Anti-scraping protections
+
+Your task is to extend (not rebuild) the system to support a premium data-licensing business model.
+
+CORE COMMERCIAL PRINCIPLE (NON-NEGOTIABLE)
+
+Licensed data packs grant ownership of a fixed snapshot.
+Live intelligence grants access to continuous updates.
+Subscriptions, licensed packs, and live access are separate entitlements.
+
+Do not remove existing subscriptions.
+Do not collapse products into one.
+
+PRODUCT TYPES (FINAL)
+1️⃣ Licensed Data Packs (Self-Serve, One-Off)
+
+Permanent licensed access
+
+Snapshot only (no updates)
+
+Region + crop scoped
+
+Stripe + Paystack one-off checkout
+
+2️⃣ Live Market Intelligence (Sales-Led, Annual)
+
+Monthly refresh
+
+Market movement
+
+Trust score changes
+
+Manually granted by admin
+
+No self-serve checkout
+
+3️⃣ Existing Subscriptions (Retained)
+
+Still monthly
+
+Now region + crop scoped
+
+Used mainly for lighter users / transition period
+
+NIGERIA REGIONAL STRUCTURE (AUTHORITATIVE)
+
+Hard-code Nigeria’s 6 geopolitical zones.
+
+Region Codes
+
+SW – South West
+
+SE – South East
+
+SS – South South
+
+NC – North Central
+
+NW – North West
+
+NE – North East
+
+State → Region Mapping (EXACT, SINGLE SOURCE OF TRUTH)
+NIGERIA_STATE_REGION_MAP = {
+    "Lagos": "SW", "Ogun": "SW", "Oyo": "SW", "Osun": "SW", "Ondo": "SW", "Ekiti": "SW",
+    "Abia": "SE", "Anambra": "SE", "Ebonyi": "SE", "Enugu": "SE", "Imo": "SE",
+    "Akwa Ibom": "SS", "Bayelsa": "SS", "Cross River": "SS",
+    "Delta": "SS", "Edo": "SS", "Rivers": "SS",
+    "Benue": "NC", "Kogi": "NC", "Kwara": "NC", "Nasarawa": "NC",
+    "Niger": "NC", "Plateau": "NC", "FCT": "NC", "Abuja": "NC",
+    "Kaduna": "NW", "Kano": "NW", "Katsina": "NW",
+    "Kebbi": "NW", "Jigawa": "NW", "Sokoto": "NW", "Zamfara": "NW",
+    "Adamawa": "NE", "Bauchi": "NE", "Borno": "NE",
+    "Gombe": "NE", "Taraba": "NE", "Yobe": "NE"
+}
+
+Mandatory Rule
+
+During admin CSV upload:
+
+Read state
+
+Normalize (strip, title-case)
+
+Map to region_code
+
+Inject region_code into record_json
+
+Reject rows with unmapped states
+
+DATA MODEL EXTENSIONS (SQLAlchemy)
+UserAccessScope
+
+Tracks what a user is allowed to see.
+
+id
+
+user_id
+
+scope_type (subscription, licensed_pack, live_intelligence)
+
+regions_selected (JSON array)
+
+crops_selected (JSON array)
+
+locked_until (nullable datetime)
+
+created_at
+
+LicensedPack
+
+Defines what can be purchased.
+
+id
+
+code (CORE_REGIONAL, EXPANDED_REGIONAL, NATIONAL)
+
+name
+
+regions_allowed (int)
+
+crops_allowed (int or "ALL")
+
+snapshot_month (latest published by default)
+
+stripe_price_or_link
+
+paystack_link_or_code
+
+price_display
+
+active
+
+License
+
+Grants snapshot ownership.
+
+id
+
+user_id
+
+licensed_pack_id
+
+regions_selected (JSON)
+
+crops_selected (JSON)
+
+snapshot_month
+
+status (active, revoked)
+
+created_at
+
+LiveIntelligenceAccess
+
+Sales-led access.
+
+id
+
+user_id
+
+regions_allowed
+
+crops_allowed
+
+regions_selected (JSON)
+
+crops_selected (JSON)
+
+start_date
+
+end_date
+
+active
+
+LICENSED PACK CATALOGUE (FINAL, MUST MATCH UI)
+🟩 Core Regional Intelligence Pack
+
+Regions: 1
+
+Crops: up to 6
+
+Price: $1,800 / ₦1,500,000
+
+Snapshot only
+
+All datasets
+
+No updates
+
+🟦 Expanded Regional Intelligence Pack
+
+Regions: 2 ← IMPORTANT
+
+Crops: up to 15 (total)
+
+Price: $3,800 / ₦3,000,000
+
+Snapshot only
+
+All datasets
+
+No updates
+
+🟪 National Intelligence Pack
+
+Regions: all 6
+
+Crops: all
+
+Price: $8,500 / ₦7,000,000
+
+Snapshot only
+
+All datasets
+
+No updates
+
+Mandatory Notice (Display on /packs)
+
+Licensed Data Packs are point-in-time snapshots.
+Continuous updates require a Live Intelligence License.
+
+SUBSCRIPTION PLAN UPDATES (KEEP EXISTING)
+
+Update existing plans to enforce region + crop scope:
+
+Starter: 1 region, up to 6 crops, Actor Activity Status only
+
+Intelligence: up to 3 regions, up to 15 crops, all datasets
+
+Subscriptions:
+
+Access current month only
+
+Export limits unchanged
+
+ACCESS PRIORITY LOGIC (CRITICAL)
+
+Implement helper:
+
+get_user_entitlements(user)
+
+Priority order:
+
+Active LiveIntelligenceAccess
+
+Active License (snapshot only)
+
+Active Subscription
+
+Free
+
+Return:
+
+allowed_datasets
+
+allowed_months
+
+regions_selected
+
+crops_selected
+
+export_limit
+
+DATASET FILTERING (MANDATORY)
+
+All row-level access and exports must filter by:
+
+region_code
+
+crop
+
+No exceptions.
+
+NEW ROUTES (REQUIRED)
+
+/packs — licensed pack catalogue
+
+/packs/<id> — pack details + buy
+
+/licenses — user snapshots
+
+/live-intelligence — explainer + request form
+
+PAYMENTS
+
+Licensed packs: one-off Stripe / Paystack
+
+Live intelligence: no checkout, admin-granted
+
+Log all payments in payments table
+
+SECURITY & ANTI-ABUSE (KEEP + EXTEND)
+
+Export caps
+
+Region/crop locking
+
+Watermarked CSVs
+
+View logging
+
+No bulk export
+
+No API access for licensed packs
+
+FINAL INSTRUCTION
+
+Extend the existing application to fully support:
+
+Nigeria regional intelligence
+
+Licensed snapshot packs
+
+Sales-led live intelligence
+
+Region + crop enforcement everywhere
+
+Do not remove existing functionality.

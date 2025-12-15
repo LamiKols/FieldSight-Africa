@@ -1,0 +1,369 @@
+You are working inside an existing Flask + SQLAlchemy + Postgres + Jinja/Tailwind application that is already live as a subscription-controlled data platform (Free/Starter/Intelligence), with exports, admin upload, and anti-scraping protections.
+
+Objective
+
+Implement new commercial packaging while preserving the existing core platform:
+
+Add Nigeria regional scope (6 geopolitical zones) and crop scope (crop coverage limits).
+
+Add Licensed Snapshot Packs (one-off purchase) with permanent access to a snapshot month.
+
+Add Live Intelligence Access (sales-led, annual) which unlocks current/future months and continuous updates.
+
+Keep the existing subscriptions working, but update plan logic to enforce regions + crops.
+
+A) Data Model Changes (SQLAlchemy)
+1) Create Region model + seed Nigeria zones
+
+Create Region table:
+
+code (unique): SW, SE, SS, NC, NW, NE
+
+name
+
+states_json (array)
+
+Seed with Nigeria geopolitical zones and their states.
+
+2) Add crop field if missing
+
+Ensure every dataset record has a crop field. If current DatasetRecord.record_json already contains crop, standardize key to "crop".
+
+3) Add UserAccessScope
+
+Create a table user_access_scopes:
+
+id
+
+user_id
+
+scope_type (subscription | licensed_pack | live_intelligence)
+
+regions_selected (JSON array of region codes)
+
+crops_selected (JSON array of crop strings)
+
+locked_until (nullable datetime; for subscription scope locking)
+
+created_at
+
+4) Licensed Packs + Licenses
+
+Create tables:
+
+licensed_packs
+
+id
+
+code (CORE_REGIONAL, EXPANDED_REGIONAL, NATIONAL)
+
+name
+
+regions_allowed (int)
+
+crops_allowed (int or string "ALL")
+
+snapshot_month (YYYY-MM; default latest published month)
+
+stripe_payment_link_or_price_id (nullable)
+
+paystack_payment_link_or_plan_code (nullable)
+
+price_display (string for UI, e.g. "$1,800 / ₦1.5m")
+
+active (bool)
+
+licenses
+
+id
+
+user_id
+
+licensed_pack_id
+
+regions_selected (JSON array)
+
+crops_selected (JSON array)
+
+snapshot_month
+
+status (active, revoked)
+
+created_at
+
+5) Live Intelligence Access (sales-led)
+
+Create live_intelligence_access:
+
+id
+
+user_id
+
+regions_allowed
+
+crops_allowed
+
+regions_selected (JSON)
+
+crops_selected (JSON)
+
+start_date
+
+end_date
+
+active
+
+B) Plan Changes (Update Existing Subscription Plans)
+
+Update your existing subscription plan objects (DB or config) to include region and crop limits.
+
+New subscription limits
+
+Free: preview only (no scope needed)
+
+Starter: 1 region, up to 6 crops, still only Actor Activity Status, 5,000 rows/month
+
+Intelligence: up to 3 regions, up to 15 crops, all 4 datasets, 50,000 rows/month
+
+Implement scope constraints so users can only filter/export within their chosen regions/crops.
+
+C) Access Rules (Unify Logic Without Breaking Existing System)
+
+Implement a single function:
+
+get_user_entitlements(user)
+
+Returns:
+
+allowed_datasets (list)
+
+export_limit
+
+regions_selected
+
+crops_selected
+
+access_mode (subscription | licensed_pack | live_intelligence | free)
+
+allowed_months:
+
+subscription: current month only
+
+licensed_pack: snapshot_month only
+
+live_intelligence: current month + future months until end_date
+
+free: none (no row-level)
+
+Priority order:
+
+If live_intelligence_access.active and within dates → use that
+
+Else if active license exists → use that (snapshot only)
+
+Else if subscription active → use subscription rules
+
+Else free
+
+D) Dataset Filtering Changes
+
+Currently you show dataset tables per dataset/month and allow export.
+
+Modify dataset queries so that row-level data is always filtered by:
+
+region scope (derived from state mapping OR region_code stored)
+
+crop scope
+
+Implementation approach:
+
+Add region_code into record_json at ingest time based on state → region map
+
+When rendering or exporting:
+
+filter records where record_json["region_code"] in allowed_regions
+
+and record_json["crop"] in allowed_crops (unless crops_allowed is ALL)
+
+If records are currently stored without region_code:
+
+During admin upload, enrich each row with region_code based on its state.
+
+E) Admin Upload Updates (Minimal Impact)
+
+Update admin CSV upload pipeline:
+
+Validate required columns as before
+
+Ensure state exists in record_json
+
+Compute and inject region_code based on state
+
+Ensure crop key exists (or map from existing column)
+
+Save enriched records
+
+Add a preview that shows:
+
+counts per region
+
+counts per crop
+
+F) New Customer-Facing Pages
+1) /packs — Licensed Pack Catalogue
+
+Show three cards:
+
+Core Regional Pack
+
+1 region, up to 6 crops, snapshot month
+
+Price display field
+
+Buy buttons (Stripe + Paystack)
+
+Expanded Regional Pack (IMPORTANT)
+
+2 regions, up to 15 crops, snapshot month
+
+Price display field
+
+Buy buttons (Stripe + Paystack)
+
+National Pack
+
+all 6 regions, all crops
+
+Include notice:
+“Licensed packs are one-time snapshots. Live Intelligence provides continuous updates.”
+
+2) Pack purchase flow
+
+After successful one-off payment (Stripe/Paystack):
+
+create License
+
+require user to select regions/crops within pack limits
+
+lock selections permanently
+
+3) /live-intelligence — Sales-led page
+
+Explanation
+
+“Request Live Intelligence” form capturing:
+
+company name
+
+email
+
+intended regions
+
+intended crops
+
+use case
+Store requests in live_intelligence_requests table for admin review.
+
+4) /licenses — User view
+
+show purchased pack(s)
+
+snapshot month
+
+download access
+
+G) Payment Handling Changes (Without Deleting Existing Stripe/Paystack Subscription Setup)
+
+Keep existing Stripe/Paystack subscription flows intact.
+
+Add new flows for one-off pack purchases:
+
+Stripe (packs)
+
+Use Stripe Checkout (one-time payment). On webhook success:
+
+mark pack purchase complete
+
+create license record
+
+send user to region/crop selection screen
+
+Paystack (packs)
+
+Use Paystack one-time transaction initialization and callback verify:
+
+same outcome as Stripe
+
+Add a new payments table to log:
+
+provider
+
+type (subscription | pack)
+
+reference
+
+user_id
+
+status
+
+amount
+
+currency
+
+H) UX: Scope Selection & Locking
+
+On first access after purchase/subscription:
+
+Show a modal/page “Choose your operating scope”
+
+Regions selectable up to plan/pack limit
+
+Crops selectable up to crop limit
+
+Save to user_access_scopes
+
+Lock rules:
+
+Subscription: allow change once per month (or lock until period end)
+
+Licensed pack: permanently locked
+
+Live intelligence: locked per contract
+
+I) Acceptance Criteria
+
+Existing subscription features still work
+
+Starter/Intelligence now require region + crop selection
+
+Dataset tables and exports filter by region/crop
+
+Licensed packs can be purchased (Stripe + Paystack one-off)
+
+Licensed pack grants snapshot-only access
+
+Live Intelligence is request/invoice-led and can be toggled by admin
+
+Admin upload enriches region_code from state
+
+No free user can see row-level data
+
+J) Deliverables
+
+Implement these changes with:
+
+database migrations (Flask-Migrate if present; otherwise safe db.create_all() + backfill scripts)
+
+seed scripts for regions and licensed packs
+
+updated templates and routes
+
+updated access control helpers
+
+Return the updated codebase and ensure the app runs.
+
+If you want, I can also generate:
+
+the exact Nigeria state→region mapping table to hardcode into your app, and
+
+the exact licensed pack pricing blocks to insert into your /packs page.
