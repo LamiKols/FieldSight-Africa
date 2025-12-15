@@ -1,0 +1,212 @@
+You are working inside an existing Flask + Jinja + TailwindCSS agricultural intelligence platform.
+
+The application currently contains:
+
+A public pricing page with monthly SaaS plans
+
+Licensed Data Packs (one-off, premium)
+
+Live Market Intelligence (sales-led, annual)
+
+User accounts, dashboards, and admin tooling
+
+Your task is to remove subscriptions as a public-facing product and implement a clean, premium commercial structure centered on Licensed Data Packs and Live Market Intelligence.
+
+OBJECTIVE (NON-NEGOTIABLE)
+
+Subscriptions are no longer a marketed product.
+Licensed Data Packs and Live Intelligence are the primary offerings.
+
+The platform must present itself as a data licensing and intelligence business, not a SaaS tool.
+
+FINAL PUBLIC STRUCTURE (MUST MATCH)
+Primary Public Navigation
+
+Replace the top navigation with only:
+
+Home
+
+Data Packs
+
+Live Intelligence
+
+Login
+
+Sign Up
+
+❌ Remove “Pricing” from all public navigation menus
+❌ Do not show subscription plans anywhere publicly
+
+STEP 1 — Retire the Pricing Page from Public Use
+Routing Changes
+
+Keep the /pricing route technically available (do not delete yet)
+
+Remove all links to /pricing from:
+
+Header
+
+Footer
+
+Landing pages
+
+Call-to-action buttons
+
+Purpose
+
+This prevents:
+
+Low price anchoring
+
+Buyer confusion
+
+Undermining premium data packs
+
+STEP 2 — Update Sign-Up Flow (Critical)
+Before
+
+Users are pushed toward plan selection.
+
+After (REQUIRED)
+
+All new users sign up into a Free Preview state
+
+No plan selection during sign-up
+
+No pricing shown during onboarding
+
+On successful sign-up, redirect users to:
+/data-packs (or /packs)
+
+STEP 3 — Define the New “Free Preview” State
+Free Preview Rules
+
+Free users can:
+
+View dataset catalogue
+
+See dataset descriptions
+
+See record counts
+
+See available regions and crops
+
+Free users cannot:
+
+View row-level data
+
+Export CSVs
+
+Access snapshots
+
+Access live data
+
+Messaging (Display on dataset pages)
+
+You are viewing a preview.
+Purchase a Licensed Data Pack to access full datasets, or request Live Intelligence for ongoing updates.
+
+STEP 4 — Update Dashboard Messaging (Existing Users)
+
+For users who previously had or still have subscriptions:
+
+Dashboard Banner (Top)
+
+Display:
+
+Important Notice
+Subscription plans are no longer offered to new customers.
+Licensed Data Packs and Live Market Intelligence are now the recommended access models.
+
+Behaviour
+
+Do not auto-cancel existing subscriptions
+
+Allow existing subscribers to continue until expiry
+
+Do not promote renewals
+
+Do not upsell subscriptions
+
+This ensures a graceful transition without disruption.
+
+STEP 5 — Make Data Packs the Primary Commercial CTA
+
+Across the application:
+
+Replace any “Upgrade Plan” buttons with:
+
+View Data Packs
+
+Replace any “Choose a Plan” copy with:
+
+Purchase a Licensed Data Pack
+
+The Data Packs page becomes the default commercial entry point.
+
+STEP 6 — Reinforce Live Intelligence as Premium
+
+Ensure the Live Market Intelligence page:
+
+Has no pricing table
+
+Has no checkout
+
+Has Request Information as the only CTA
+
+Clearly states:
+
+Annual license
+
+Custom scope
+
+Sales-led onboarding
+
+This page should feel enterprise-only.
+
+STEP 7 — Footer & SEO Hygiene
+
+Remove pricing references from footer links
+
+Update meta descriptions where necessary to emphasise:
+
+“Licensed agricultural intelligence”
+
+“Data snapshots”
+
+“Market intelligence”
+
+Avoid words like:
+
+“Plans”
+
+“Subscriptions”
+
+“Monthly pricing”
+
+ACCEPTANCE CRITERIA
+
+The platform should now:
+
+✅ Present only two paid products publicly
+  • Licensed Data Packs
+  • Live Market Intelligence
+
+✅ Have no public pricing page
+✅ Have no visible SaaS plan comparisons
+✅ Funnel all users through Free Preview → Packs → Live Intelligence
+✅ Preserve existing users without disruption
+✅ Maintain production readiness on Replit
+
+FINAL INSTRUCTION
+
+Apply these changes cleanly and conservatively.
+Do not remove backend subscription logic yet — only remove it from marketing, navigation, and onboarding.
+
+Return the updated application with:
+
+Clean navigation
+
+Clear product hierarchy
+
+No pricing confusion
