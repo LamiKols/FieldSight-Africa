@@ -57,6 +57,34 @@ app.register_blueprint(admin_bp)
 app.register_blueprint(payments_bp)
 
 
+def migrate_payment_plans_table():
+    """Add missing columns to payment_plans table if they don't exist"""
+    from sqlalchemy import text
+    try:
+        db.session.execute(text("""
+            DO $$ 
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns 
+                    WHERE table_name = 'payment_plans' AND column_name = 'regions_allowed'
+                ) THEN
+                    ALTER TABLE payment_plans ADD COLUMN regions_allowed INTEGER DEFAULT 1;
+                END IF;
+                
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns 
+                    WHERE table_name = 'payment_plans' AND column_name = 'crops_allowed'
+                ) THEN
+                    ALTER TABLE payment_plans ADD COLUMN crops_allowed INTEGER DEFAULT 6;
+                END IF;
+            END $$;
+        """))
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        print(f"Migration warning: {e}")
+
+
 def seed_payment_plans():
     plans = [
         {
@@ -170,6 +198,7 @@ def seed_datasets():
 
 with app.app_context():
     db.create_all()
+    migrate_payment_plans_table()
     seed_payment_plans()
     seed_datasets()
     seed_licensed_packs()
