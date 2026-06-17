@@ -90,6 +90,88 @@ DOCUMENT_VISIBILITY_LEVELS = [
     "full_document",
 ]
 
+CONSENT_STATUSES = [
+    "not_requested",
+    "requested",
+    "granted",
+    "refused",
+    "withdrawn",
+    "expired",
+]
+
+CONSENT_METHODS = [
+    "written",
+    "digital_checkbox",
+    "uploaded_form",
+    "email_confirmation",
+    "verbal_pending_written_confirmation",
+    "partner_attestation",
+]
+
+CONSENT_REVIEW_STATUSES = [
+    "pending_review",
+    "accepted",
+    "rejected",
+    "needs_correction",
+]
+
+CONSENT_SCOPE_OPTIONS = [
+    ("store_actor_profile_data", "Store actor profile data internally"),
+    ("store_actor_documents", "Store actor documents internally"),
+    ("use_actor_data_for_verification", "Use actor data for verification/review"),
+    ("share_basic_profile_with_subscribers", "Share basic actor profile with subscribers"),
+    ("share_restricted_contact_with_approved_users", "Share restricted contact data with approved users only"),
+    ("share_document_metadata_with_subscribers", "Share document metadata with subscribers"),
+    ("share_redacted_documents_with_subscribers", "Share redacted documents with subscribers"),
+    ("share_full_documents_with_approved_users", "Share full documents with approved users only"),
+    ("include_in_paid_data_packs", "Include actor in paid data packs"),
+    ("include_in_live_intelligence", "Include actor in live intelligence reports"),
+    ("include_in_api_responses", "Include actor in API responses"),
+    ("use_documents_for_extraction_quality", "Use uploaded documents for extraction/data quality checks"),
+]
+
+CONSENT_DATA_CATEGORY_OPTIONS = [
+    ("identity_profile", "Identity profile"),
+    ("location", "Location"),
+    ("crop_commodity", "Crop/commodity"),
+    ("export_profile", "Export profile"),
+    ("certification_metadata", "Certification metadata"),
+    ("operational_constraints", "Operational constraints"),
+    ("contact_details", "Contact details"),
+]
+
+CONSENT_DOCUMENT_CATEGORY_OPTIONS = [
+    ("public_compliance_document", "Public compliance document"),
+    ("export_compliance_document", "Export compliance document"),
+    ("company_registration_document", "Company registration document"),
+    ("identity_document", "Identity document"),
+    ("financial_document", "Financial document"),
+    ("transaction_document", "Transaction document"),
+    ("logistics_document", "Logistics document"),
+    ("other", "Other"),
+]
+
+CONSENT_SHARING_CHANNEL_OPTIONS = [
+    ("internal_review", "Internal review"),
+    ("partner_portal", "Partner portal"),
+    ("admin_review", "Admin review"),
+    ("licensed_data_pack", "Licensed data pack"),
+    ("live_intelligence", "Live intelligence"),
+    ("subscriber_portal", "Subscriber portal"),
+    ("api", "API"),
+    ("approved_buyer_due_diligence", "Approved buyer due diligence"),
+]
+
+DOCUMENT_TYPE_CONSENT_CATEGORY_MAP = {
+    "identity": "identity_document",
+    "financial_identity": "financial_document",
+    "business_registration": "company_registration_document",
+    "export_compliance": "export_compliance_document",
+    "quality_compliance": "public_compliance_document",
+    "trade_document": "transaction_document",
+    "field_verification": "other",
+}
+
 REFERENCE_OPTION_CATEGORIES = [
     "actor_status",
     "registration_status",
@@ -822,6 +904,42 @@ class DocumentEntitlement(TimestampMixin, db.Model):
     document_type = db.relationship('DocumentType', backref='document_entitlements')
 
 
+class ActorConsentRecord(TimestampMixin, db.Model):
+    __tablename__ = 'actor_consent_records'
+
+    id = db.Column(db.Integer, primary_key=True)
+    market_actor_id = db.Column(db.Integer, db.ForeignKey('market_actors.id'), nullable=False)
+    partner_organization_id = db.Column(db.Integer, db.ForeignKey('partner_organizations.id'), nullable=False)
+    consent_status = db.Column(db.String(50), default='not_requested', nullable=False)
+    consent_scope_json = db.Column(db.JSON, default=list)
+    permitted_data_categories_json = db.Column(db.JSON, default=list)
+    permitted_document_categories_json = db.Column(db.JSON, default=list)
+    sharing_channels_json = db.Column(db.JSON, default=list)
+    consent_method = db.Column(db.String(80))
+    consent_reference = db.Column(db.String(180))
+    consent_document_id = db.Column(db.Integer, db.ForeignKey('actor_documents.id'))
+    granted_by_name = db.Column(db.String(120))
+    granted_by_role = db.Column(db.String(120))
+    granted_by_email = db.Column(db.String(120))
+    granted_by_phone = db.Column(db.String(50))
+    granted_at = db.Column(db.DateTime)
+    expires_at = db.Column(db.DateTime)
+    withdrawn_at = db.Column(db.DateTime)
+    withdrawal_reason = db.Column(db.Text)
+    captured_by_user_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+    review_status = db.Column(db.String(50), default='pending_review')
+    reviewed_by_user_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+    reviewed_at = db.Column(db.DateTime)
+    review_notes = db.Column(db.Text)
+    active = db.Column(db.Boolean, default=True)
+
+    market_actor = db.relationship('MarketActor', backref='consent_records')
+    partner_organization = db.relationship('PartnerOrganization', backref='actor_consent_records')
+    consent_document = db.relationship('ActorDocument', foreign_keys=[consent_document_id], backref='linked_consent_records')
+    captured_by_user = db.relationship('User', foreign_keys=[captured_by_user_id], backref='captured_actor_consents')
+    reviewed_by_user = db.relationship('User', foreign_keys=[reviewed_by_user_id], backref='reviewed_actor_consents')
+
+
 class ApiClient(TimestampMixin, db.Model):
     __tablename__ = 'api_clients'
 
@@ -999,6 +1117,77 @@ def get_user_entitlements(user):
         'snapshot_month': None,
         'source': None
     }
+
+
+def consent_record_is_active(consent_record, now=None):
+    """Return true when a consent record currently permits sharing gates."""
+
+    if not consent_record:
+        return False
+    now = now or datetime.utcnow()
+    if not consent_record.active:
+        return False
+    if consent_record.consent_status != "granted":
+        return False
+    if consent_record.withdrawn_at:
+        return False
+    if consent_record.expires_at and consent_record.expires_at < now:
+        return False
+    if consent_record.review_status == "rejected":
+        return False
+    return True
+
+
+def get_active_actor_consent(actor, now=None):
+    if not actor:
+        return None
+
+    consent_records = (
+        ActorConsentRecord.query.filter_by(
+            market_actor_id=actor.id,
+            partner_organization_id=actor.partner_organization_id,
+        )
+        .order_by(ActorConsentRecord.updated_at.desc(), ActorConsentRecord.id.desc())
+        .all()
+    )
+    for consent_record in consent_records:
+        if consent_record_is_active(consent_record, now=now):
+            return consent_record
+    return None
+
+
+def actor_has_active_consent(actor):
+    return get_active_actor_consent(actor) is not None
+
+
+def actor_can_share_data(actor, channel):
+    consent_record = get_active_actor_consent(actor)
+    if not consent_record:
+        return False
+    if channel not in (consent_record.sharing_channels_json or []):
+        return False
+    return bool(consent_record.permitted_data_categories_json)
+
+
+def actor_can_share_documents(actor, channel, document_category=None):
+    consent_record = get_active_actor_consent(actor)
+    if not consent_record:
+        return False
+    if channel not in (consent_record.sharing_channels_json or []):
+        return False
+
+    permitted_categories = consent_record.permitted_document_categories_json or []
+    if not permitted_categories:
+        return False
+    if document_category:
+        return document_category in permitted_categories
+    return True
+
+
+def consent_document_category_for_document_type(document_type):
+    if not document_type:
+        return "other"
+    return DOCUMENT_TYPE_CONSENT_CATEGORY_MAP.get(document_type.category, "other")
 
 
 def calculate_actor_quality_score(actor):

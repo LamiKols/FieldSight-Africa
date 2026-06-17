@@ -11,10 +11,59 @@
             <p class="text-gray-600 mt-1">{{ actor.actor_type|replace('_', ' ')|title }} | {{ actor.public_id }}</p>
         </div>
         <div class="flex items-center gap-3">
+            <a href="{{ url_for('partner.actor_consent', actor_id=actor.id) }}" class="bg-white border border-primary text-primary px-5 py-2 rounded-lg hover:bg-gray-50 transition">Consent</a>
             <a href="{{ url_for('partner.actor_documents', actor_id=actor.id) }}" class="bg-white border border-primary text-primary px-5 py-2 rounded-lg hover:bg-gray-50 transition">Documents</a>
             {% if can_edit %}
             <a href="{{ url_for('partner.edit_actor', actor_id=actor.id) }}" class="bg-primary text-white px-5 py-2 rounded-lg hover:bg-secondary transition">Edit</a>
             {% endif %}
+        </div>
+    </div>
+
+    <div class="bg-white rounded-xl shadow-sm border p-6 mb-6">
+        <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-5">
+            <div>
+                <div class="flex items-center gap-3 mb-3">
+                    <h2 class="text-xl font-semibold text-gray-900">Consent And Data Sharing</h2>
+                    <span class="px-3 py-1 rounded-full text-sm font-medium {% if consent_status == 'granted' %}bg-green-100 text-green-800{% elif consent_status == 'requested' %}bg-amber-100 text-amber-800{% elif consent_status == 'not_requested' %}bg-gray-100 text-gray-700{% else %}bg-red-100 text-red-800{% endif %}">
+                        {{ consent_status|replace('_', ' ')|title }}
+                    </span>
+                </div>
+                {% if not active_consent %}
+                <div class="rounded-lg bg-amber-50 border border-amber-200 p-4 text-sm text-amber-800 mb-4">
+                    No active consent is recorded. Actor data and documents should not be externally shared.
+                </div>
+                {% endif %}
+                <dl class="grid md:grid-cols-2 gap-3 text-sm">
+                    <div class="flex justify-between gap-4"><dt class="text-gray-500">Data Shareable</dt><dd class="text-gray-900 text-right">{{ 'Yes' if data_shareable else 'No' }}</dd></div>
+                    <div class="flex justify-between gap-4"><dt class="text-gray-500">Documents Shareable</dt><dd class="text-gray-900 text-right">{{ 'Yes' if documents_shareable else 'No' }}</dd></div>
+                    <div class="flex justify-between gap-4"><dt class="text-gray-500">Consent Method</dt><dd class="text-gray-900 text-right">{{ current_consent.consent_method|replace('_', ' ')|title if current_consent and current_consent.consent_method else 'Not set' }}</dd></div>
+                    <div class="flex justify-between gap-4"><dt class="text-gray-500">Granted By</dt><dd class="text-gray-900 text-right">{{ current_consent.granted_by_name if current_consent and current_consent.granted_by_name else 'Not set' }}</dd></div>
+                    <div class="flex justify-between gap-4"><dt class="text-gray-500">Granted At</dt><dd class="text-gray-900 text-right">{{ current_consent.granted_at.strftime('%Y-%m-%d') if current_consent and current_consent.granted_at else 'Not set' }}</dd></div>
+                    <div class="flex justify-between gap-4"><dt class="text-gray-500">Expiry Date</dt><dd class="text-gray-900 text-right">{{ current_consent.expires_at.strftime('%Y-%m-%d') if current_consent and current_consent.expires_at else 'Not set' }}</dd></div>
+                </dl>
+                {% if current_consent %}
+                <div class="mt-4 grid md:grid-cols-3 gap-4 text-sm">
+                    <div>
+                        <h3 class="text-gray-500 mb-2">Sharing Channels</h3>
+                        <p class="text-gray-900">{{ current_consent.sharing_channels_json|join(', ')|replace('_', ' ')|title if current_consent.sharing_channels_json else 'None' }}</p>
+                    </div>
+                    <div>
+                        <h3 class="text-gray-500 mb-2">Data Categories</h3>
+                        <p class="text-gray-900">{{ current_consent.permitted_data_categories_json|join(', ')|replace('_', ' ')|title if current_consent.permitted_data_categories_json else 'None' }}</p>
+                    </div>
+                    <div>
+                        <h3 class="text-gray-500 mb-2">Document Categories</h3>
+                        <p class="text-gray-900">{{ current_consent.permitted_document_categories_json|join(', ')|replace('_', ' ')|title if current_consent.permitted_document_categories_json else 'None' }}</p>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+            <div class="flex flex-col gap-3 min-w-48">
+                <a href="{{ url_for('partner.actor_consent', actor_id=actor.id) }}" class="bg-white border border-primary text-primary px-5 py-2 rounded-lg hover:bg-gray-50 transition text-center">Consent History</a>
+                {% if can_edit %}
+                <a href="{{ url_for('partner.new_actor_consent', actor_id=actor.id) }}" class="bg-primary text-white px-5 py-2 rounded-lg hover:bg-secondary transition text-center">{% if current_consent %}Update Consent{% else %}Record Consent{% endif %}</a>
+                {% endif %}
+            </div>
         </div>
     </div>
 

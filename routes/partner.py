@@ -14,12 +14,20 @@ from werkzeug.utils import secure_filename
 from models import (
     ACTOR_TYPES,
     COMMON_STATUSES,
+    CONSENT_DATA_CATEGORY_OPTIONS,
+    CONSENT_DOCUMENT_CATEGORY_OPTIONS,
+    CONSENT_METHODS,
+    CONSENT_REVIEW_STATUSES,
+    CONSENT_SCOPE_OPTIONS,
+    CONSENT_SHARING_CHANNEL_OPTIONS,
+    CONSENT_STATUSES,
     DOCUMENT_VISIBILITY_LEVELS,
     PARTNER_DATASET_TYPES,
     PARTNER_ROLES,
     ActorCertification,
     ActorContact,
     ActorConstraint,
+    ActorConsentRecord,
     ActorDocument,
     ActorDocumentVersion,
     ActorExportProfile,
@@ -41,7 +49,12 @@ from models import (
     Region,
     State,
     TradeDestination,
+    actor_can_share_data,
+    actor_can_share_documents,
+    actor_has_active_consent,
     calculate_actor_quality_score,
+    consent_document_category_for_document_type,
+    get_active_actor_consent,
     db,
 )
 
@@ -52,6 +65,13 @@ SUBMITTER_ROLES = ("partner_admin", "data_reviewer")
 RESTRICTED_CONTACT_ROLES = ("partner_admin", "data_editor", "data_reviewer")
 DOCUMENT_DOWNLOAD_ROLES = ("partner_admin", "data_editor", "data_reviewer")
 ALLOWED_DOCUMENT_EXTENSIONS = {"pdf", "png", "jpg", "jpeg", "csv", "xls", "xlsx"}
+EXTERNAL_SHARING_CHANNELS = (
+    "licensed_data_pack",
+    "live_intelligence",
+    "subscriber_portal",
+    "api",
+    "approved_buyer_due_diligence",
+)
 
 
 def get_partner_profile_for_user(user):
@@ -153,6 +173,22 @@ def get_partner_document_or_404(document_id, profile):
     return document
 
 
+def get_partner_consent_or_404(actor_id, consent_id, profile):
+    consent_record = (
+        ActorConsentRecord.query.join(MarketActor)
+        .filter(
+            ActorConsentRecord.id == consent_id,
+            ActorConsentRecord.market_actor_id == actor_id,
+            ActorConsentRecord.partner_organization_id == profile.partner_organization_id,
+            MarketActor.partner_organization_id == profile.partner_organization_id,
+        )
+        .first()
+    )
+    if not consent_record:
+        abort(404)
+    return consent_record
+
+
 def get_partner_batch_or_404(batch_id, profile):
     batch = PartnerUpdateBatch.query.filter_by(
         id=batch_id,
@@ -238,6 +274,35 @@ def parse_optional_date(field_name, label, errors):
     except ValueError:
         errors.append(f"{label} must use YYYY-MM-DD format.")
         return None
+
+
+def parse_optional_datetime(field_name, label, errors):
+    value = clean_form_value(field_name)
+    if not value:
+        return None
+    for date_format in ("%Y-%m-%dT%H:%M", "%Y-%m-%d"):
+        try:
+            parsed_value = datetime.strptime(value, date_format)
+            if date_format == "%Y-%m-%d":
+                return parsed_value.replace(hour=0, minute=0)
+            return parsed_value
+        except ValueError:
+            continue
+    errors.append(f"{label} must use YYYY-MM-DD or YYYY-MM-DD HH:MM format.")
+    return None
+
+
+def option_codes(options):
+    return {code for code, _label in options}
+
+
+def clean_multi_values(field_name, allowed_codes):
+    values = []
+    for value in request.form.getlist(field_name):
+        cleaned_value = value.strip()
+        if cleaned_value and cleaned_value in allowed_codes and cleaned_value not in values:
+            values.append(cleaned_value)
+    return values
 
 
 def private_upload_root():
@@ -384,6 +449,8 @@ def parse_document_form(actor):
     subscriber_access_level = clean_form_value("subscriber_access_level") or default_visibility or "metadata_only"
     if document_type and document_type.sensitive:
         subscriber_access_level = "hidden"
+    if not actor_has_active_consent(actor):
+        subscriber_access_level = "hidden"
 
     if subscriber_access_level not in DOCUMENT_VISIBILITY_LEVELS:
         errors.append("Please select a supported subscriber access level.")
@@ -489,6 +556,176 @@ def add_document_access_log(document, access_type, version=None):
         ip_address=request.headers.get("X-Forwarded-For", request.remote_addr),
         user_agent=request.headers.get("User-Agent"),
     ))
+
+
+def latest_consent_record(actor):
+    return (
+        ActorConsentRecord.query.filter_by(
+            market_actor_id=actor.id,
+            partner_organization_id=actor.partner_organization_id,
+        )
+        .order_by(ActorConsentRecord.updated_at.desc(), ActorConsentRecord.id.desc())
+        .first()
+    )
+
+
+def consent_status_for_actor(actor):
+    active_consent = get_active_actor_consent(actor)
+    if active_consent:
+        return active_consent.consent_status, active_consent
+    latest_record = latest_consent_record(actor)
+    if latest_record:
+        if latest_record.consent_status == "granted" and latest_record.expires_at and latest_record.expires_at < datetime.utcnow():
+            return "expired", latest_record
+        return latest_record.consent_status, latest_record
+    return "not_requested", None
+
+
+def actor_data_is_externally_shareable(actor):
+    return any(actor_can_share_data(actor, channel) for channel in EXTERNAL_SHARING_CHANNELS)
+
+
+def actor_documents_are_externally_shareable(actor):
+    return any(actor_can_share_documents(actor, channel) for channel in EXTERNAL_SHARING_CHANNELS)
+
+
+def consent_choices_context():
+    return {
+        "consent_statuses": CONSENT_STATUSES,
+        "consent_methods": CONSENT_METHODS,
+        "review_statuses": CONSENT_REVIEW_STATUSES,
+        "consent_scope_options": CONSENT_SCOPE_OPTIONS,
+        "data_category_options": CONSENT_DATA_CATEGORY_OPTIONS,
+        "document_category_options": CONSENT_DOCUMENT_CATEGORY_OPTIONS,
+        "sharing_channel_options": CONSENT_SHARING_CHANNEL_OPTIONS,
+    }
+
+
+def consent_form_context(profile, actor, consent_record=None):
+    context = consent_choices_context()
+    context.update({
+        "profile": profile,
+        "organization": profile.partner_organization,
+        "actor": actor,
+        "consent_record": consent_record,
+        "actor_documents": (
+            ActorDocument.query.filter_by(
+                market_actor_id=actor.id,
+                partner_organization_id=profile.partner_organization_id,
+            )
+            .order_by(ActorDocument.updated_at.desc())
+            .all()
+        ),
+    })
+    return context
+
+
+def parse_consent_form(actor, profile):
+    errors = []
+    consent_status = clean_form_value("consent_status") or "requested"
+    consent_method = clean_form_value("consent_method")
+    review_status = clean_form_value("review_status") or "pending_review"
+    consent_document_id = parse_optional_int("consent_document_id", "Consent document", errors)
+    granted_at = parse_optional_datetime("granted_at", "Granted at", errors)
+    expires_at = parse_optional_datetime("expires_at", "Expiry date", errors)
+
+    if consent_status not in CONSENT_STATUSES:
+        errors.append("Please select a supported consent status.")
+    if consent_method and consent_method not in CONSENT_METHODS:
+        errors.append("Please select a supported consent method.")
+    if review_status not in CONSENT_REVIEW_STATUSES:
+        errors.append("Please select a supported review status.")
+
+    consent_document = None
+    if consent_document_id:
+        consent_document = ActorDocument.query.filter_by(
+            id=consent_document_id,
+            market_actor_id=actor.id,
+            partner_organization_id=profile.partner_organization_id,
+        ).first()
+        if not consent_document:
+            errors.append("Selected consent document must belong to this actor and partner organization.")
+
+    consent_scope = clean_multi_values("consent_scope_json", option_codes(CONSENT_SCOPE_OPTIONS))
+    data_categories = clean_multi_values("permitted_data_categories_json", option_codes(CONSENT_DATA_CATEGORY_OPTIONS))
+    document_categories = clean_multi_values("permitted_document_categories_json", option_codes(CONSENT_DOCUMENT_CATEGORY_OPTIONS))
+    sharing_channels = clean_multi_values("sharing_channels_json", option_codes(CONSENT_SHARING_CHANNEL_OPTIONS))
+
+    if consent_status == "granted":
+        if not consent_method:
+            errors.append("Consent method is required when consent is granted.")
+        if not clean_form_value("granted_by_name"):
+            errors.append("Granted by name is required when consent is granted.")
+        if not granted_at:
+            granted_at = datetime.utcnow()
+    if expires_at and granted_at and expires_at < granted_at:
+        errors.append("Consent expiry cannot be before the granted date.")
+
+    return errors, {
+        "consent_status": consent_status,
+        "consent_scope_json": consent_scope,
+        "permitted_data_categories_json": data_categories,
+        "permitted_document_categories_json": document_categories,
+        "sharing_channels_json": sharing_channels,
+        "consent_method": consent_method or None,
+        "consent_reference": clean_form_value("consent_reference") or None,
+        "consent_document_id": consent_document.id if consent_document else None,
+        "granted_by_name": clean_form_value("granted_by_name") or None,
+        "granted_by_role": clean_form_value("granted_by_role") or None,
+        "granted_by_email": clean_form_value("granted_by_email") or None,
+        "granted_by_phone": clean_form_value("granted_by_phone") or None,
+        "granted_at": granted_at,
+        "expires_at": expires_at,
+        "review_status": review_status,
+        "review_notes": clean_form_value("review_notes") or None,
+    }
+
+
+def apply_consent_values(consent_record, values):
+    consent_record.consent_status = values["consent_status"]
+    consent_record.consent_scope_json = values["consent_scope_json"]
+    consent_record.permitted_data_categories_json = values["permitted_data_categories_json"]
+    consent_record.permitted_document_categories_json = values["permitted_document_categories_json"]
+    consent_record.sharing_channels_json = values["sharing_channels_json"]
+    consent_record.consent_method = values["consent_method"]
+    consent_record.consent_reference = values["consent_reference"]
+    consent_record.consent_document_id = values["consent_document_id"]
+    consent_record.granted_by_name = values["granted_by_name"]
+    consent_record.granted_by_role = values["granted_by_role"]
+    consent_record.granted_by_email = values["granted_by_email"]
+    consent_record.granted_by_phone = values["granted_by_phone"]
+    consent_record.granted_at = values["granted_at"]
+    consent_record.expires_at = values["expires_at"]
+    consent_record.review_status = values["review_status"]
+    consent_record.review_notes = values["review_notes"]
+
+
+def consent_snapshot(consent_record):
+    return {
+        "id": consent_record.id,
+        "market_actor_id": consent_record.market_actor_id,
+        "partner_organization_id": consent_record.partner_organization_id,
+        "consent_status": consent_record.consent_status,
+        "consent_scope_json": consent_record.consent_scope_json,
+        "permitted_data_categories_json": consent_record.permitted_data_categories_json,
+        "permitted_document_categories_json": consent_record.permitted_document_categories_json,
+        "sharing_channels_json": consent_record.sharing_channels_json,
+        "consent_method": consent_record.consent_method,
+        "consent_reference": consent_record.consent_reference,
+        "consent_document_id": consent_record.consent_document_id,
+        "granted_by_name": consent_record.granted_by_name,
+        "granted_by_role": consent_record.granted_by_role,
+        "granted_by_email": consent_record.granted_by_email,
+        "granted_by_phone": consent_record.granted_by_phone,
+        "granted_at": consent_record.granted_at.isoformat() if consent_record.granted_at else None,
+        "expires_at": consent_record.expires_at.isoformat() if consent_record.expires_at else None,
+        "withdrawn_at": consent_record.withdrawn_at.isoformat() if consent_record.withdrawn_at else None,
+        "withdrawal_reason": consent_record.withdrawal_reason,
+        "captured_by_user_id": consent_record.captured_by_user_id,
+        "review_status": consent_record.review_status,
+        "review_notes": consent_record.review_notes,
+        "active": consent_record.active,
+    }
 
 
 def parse_actor_form(profile):
@@ -998,6 +1235,7 @@ def new_actor():
 def actor_detail(actor_id):
     profile = get_current_partner_profile()
     actor = get_partner_actor_or_404(actor_id, profile)
+    consent_status, current_consent = consent_status_for_actor(actor)
     return render_template(
         "partner/actor_detail.html",
         profile=profile,
@@ -1006,7 +1244,115 @@ def actor_detail(actor_id):
         quality_score=calculate_actor_quality_score(actor),
         can_edit=can_edit_partner_records(profile),
         show_restricted_contacts=can_view_restricted_contacts(profile),
+        consent_status=consent_status,
+        current_consent=current_consent,
+        active_consent=get_active_actor_consent(actor),
+        data_shareable=actor_data_is_externally_shareable(actor),
+        documents_shareable=actor_documents_are_externally_shareable(actor),
     )
+
+
+@partner_bp.route("/actors/<int:actor_id>/consent")
+@login_required
+@require_partner_user
+def actor_consent(actor_id):
+    profile = get_current_partner_profile()
+    actor = get_partner_actor_or_404(actor_id, profile)
+    consent_status, current_consent = consent_status_for_actor(actor)
+    consent_records = (
+        ActorConsentRecord.query.filter_by(
+            market_actor_id=actor.id,
+            partner_organization_id=profile.partner_organization_id,
+        )
+        .order_by(ActorConsentRecord.updated_at.desc(), ActorConsentRecord.id.desc())
+        .all()
+    )
+    return render_template(
+        "partner/consent.html",
+        profile=profile,
+        organization=profile.partner_organization,
+        actor=actor,
+        consent_records=consent_records,
+        consent_status=consent_status,
+        current_consent=current_consent,
+        active_consent=get_active_actor_consent(actor),
+        data_shareable=actor_data_is_externally_shareable(actor),
+        documents_shareable=actor_documents_are_externally_shareable(actor),
+        can_edit=can_edit_partner_records(profile),
+    )
+
+
+@partner_bp.route("/actors/<int:actor_id>/consent/new", methods=["GET", "POST"])
+@login_required
+@require_partner_user
+@require_partner_role(*EDITOR_ROLES)
+def new_actor_consent(actor_id):
+    profile = get_current_partner_profile()
+    actor = get_partner_actor_or_404(actor_id, profile)
+
+    if request.method == "POST":
+        errors, values = parse_consent_form(actor, profile)
+        if errors:
+            for error in errors:
+                flash(error, "error")
+            return render_template("partner/consent_form.html", **consent_form_context(profile, actor))
+
+        consent_record = ActorConsentRecord(
+            market_actor_id=actor.id,
+            partner_organization_id=profile.partner_organization_id,
+            captured_by_user_id=current_user.id,
+            active=True,
+        )
+        apply_consent_values(consent_record, values)
+        db.session.add(consent_record)
+        db.session.flush()
+        add_audit_log(
+            "consent_created",
+            "actor_consent_record",
+            consent_record.id,
+            after_values=consent_snapshot(consent_record),
+            organization_id=profile.partner_organization_id,
+        )
+        db.session.commit()
+
+        flash("Consent record created.", "success")
+        return redirect(url_for("partner.actor_consent", actor_id=actor.id))
+
+    return render_template("partner/consent_form.html", **consent_form_context(profile, actor))
+
+
+@partner_bp.route("/actors/<int:actor_id>/consent/<int:consent_id>/withdraw", methods=["POST"])
+@login_required
+@require_partner_user
+@require_partner_role(*EDITOR_ROLES)
+def withdraw_actor_consent(actor_id, consent_id):
+    profile = get_current_partner_profile()
+    actor = get_partner_actor_or_404(actor_id, profile)
+    consent_record = get_partner_consent_or_404(actor.id, consent_id, profile)
+    withdrawal_reason = clean_form_value("withdrawal_reason")
+    if not withdrawal_reason:
+        flash("Withdrawal reason is required.", "error")
+        return redirect(url_for("partner.actor_consent", actor_id=actor.id))
+
+    before_values = consent_snapshot(consent_record)
+    consent_record.consent_status = "withdrawn"
+    consent_record.withdrawn_at = datetime.utcnow()
+    consent_record.withdrawal_reason = withdrawal_reason
+    consent_record.active = False
+    db.session.flush()
+    after_values = consent_snapshot(consent_record)
+    add_audit_log(
+        "consent_withdrawn",
+        "actor_consent_record",
+        consent_record.id,
+        before_values=before_values,
+        after_values=after_values,
+        organization_id=profile.partner_organization_id,
+    )
+    db.session.commit()
+
+    flash("Consent withdrawn.", "success")
+    return redirect(url_for("partner.actor_consent", actor_id=actor.id))
 
 
 @partner_bp.route("/actors/<int:actor_id>/documents")
@@ -1105,18 +1451,23 @@ def new_actor_document(actor_id):
 def document_detail(document_id):
     profile = get_current_partner_profile()
     document = get_partner_document_or_404(document_id, profile)
+    actor = document.market_actor
     version = current_document_version(document)
     add_document_access_log(document, "metadata_view", version=version)
     db.session.commit()
+    document_consent_category = consent_document_category_for_document_type(document.document_type)
     return render_template(
         "partner/document_detail.html",
         profile=profile,
         organization=profile.partner_organization,
         document=document,
-        actor=document.market_actor,
+        actor=actor,
         current_version=version,
         can_edit=can_edit_partner_records(profile),
         can_download=can_download_partner_documents(profile),
+        active_consent=get_active_actor_consent(actor),
+        document_shareable=actor_can_share_documents(actor, "subscriber_portal", document_consent_category),
+        document_consent_category=document_consent_category,
     )
 
 

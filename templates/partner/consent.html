@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+
+{% block title %}Consent History - FieldSight Africa{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="flex items-center justify-between mb-8">
+        <div>
+            <a href="{{ url_for('partner.actor_detail', actor_id=actor.id) }}" class="text-primary hover:underline text-sm">&larr; Back to Actor</a>
+            <h1 class="text-3xl font-bold text-gray-900 mt-3">Consent History</h1>
+            <p class="text-gray-600 mt-1">{{ actor.name }} | {{ actor.public_id }}</p>
+        </div>
+        {% if can_edit %}
+        <a href="{{ url_for('partner.new_actor_consent', actor_id=actor.id) }}" class="bg-primary text-white px-5 py-2 rounded-lg hover:bg-secondary transition">{% if current_consent %}Update Consent{% else %}Record Consent{% endif %}</a>
+        {% endif %}
+    </div>
+
+    <div class="bg-white rounded-xl shadow-sm border p-6 mb-6">
+        <div class="flex flex-col md:flex-row md:items-start md:justify-between gap-5">
+            <div>
+                <div class="flex items-center gap-3 mb-3">
+                    <h2 class="text-xl font-semibold text-gray-900">Current Consent</h2>
+                    <span class="px-3 py-1 rounded-full text-sm font-medium {% if consent_status == 'granted' %}bg-green-100 text-green-800{% elif consent_status == 'requested' %}bg-amber-100 text-amber-800{% elif consent_status == 'not_requested' %}bg-gray-100 text-gray-700{% else %}bg-red-100 text-red-800{% endif %}">
+                        {{ consent_status|replace('_', ' ')|title }}
+                    </span>
+                </div>
+                {% if not active_consent %}
+                <div class="rounded-lg bg-amber-50 border border-amber-200 p-4 text-sm text-amber-800 mb-4">
+                    No active consent is recorded. Actor data and documents should not be externally shared.
+                </div>
+                {% endif %}
+                <dl class="grid md:grid-cols-2 gap-3 text-sm">
+                    <div class="flex justify-between gap-4"><dt class="text-gray-500">Data Shareable</dt><dd class="text-gray-900 text-right">{{ 'Yes' if data_shareable else 'No' }}</dd></div>
+                    <div class="flex justify-between gap-4"><dt class="text-gray-500">Documents Shareable</dt><dd class="text-gray-900 text-right">{{ 'Yes' if documents_shareable else 'No' }}</dd></div>
+                    <div class="flex justify-between gap-4"><dt class="text-gray-500">Method</dt><dd class="text-gray-900 text-right">{{ current_consent.consent_method|replace('_', ' ')|title if current_consent and current_consent.consent_method else 'Not set' }}</dd></div>
+                    <div class="flex justify-between gap-4"><dt class="text-gray-500">Reference</dt><dd class="text-gray-900 text-right">{{ current_consent.consent_reference if current_consent and current_consent.consent_reference else 'Not set' }}</dd></div>
+                    <div class="flex justify-between gap-4"><dt class="text-gray-500">Granted By</dt><dd class="text-gray-900 text-right">{{ current_consent.granted_by_name if current_consent and current_consent.granted_by_name else 'Not set' }}</dd></div>
+                    <div class="flex justify-between gap-4"><dt class="text-gray-500">Expires</dt><dd class="text-gray-900 text-right">{{ current_consent.expires_at.strftime('%Y-%m-%d') if current_consent and current_consent.expires_at else 'Not set' }}</dd></div>
+                </dl>
+            </div>
+        </div>
+    </div>
+
+    <div class="bg-white rounded-xl shadow-sm border overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="w-full">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Method</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Granted By</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Channels</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Granted</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Expires</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Review</th>
+                        {% if can_edit %}
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Action</th>
+                        {% endif %}
+                    </tr>
+                </thead>
+                <tbody class="divide-y">
+                    {% for consent in consent_records %}
+                    <tr class="hover:bg-gray-50">
+                        <td class="px-6 py-4">
+                            <span class="px-3 py-1 rounded-full text-sm font-medium {% if consent.consent_status == 'granted' and consent.active %}bg-green-100 text-green-800{% elif consent.consent_status == 'requested' %}bg-amber-100 text-amber-800{% elif consent.consent_status == 'not_requested' %}bg-gray-100 text-gray-700{% else %}bg-red-100 text-red-800{% endif %}">
+                                {{ consent.consent_status|replace('_', ' ')|title }}
+                            </span>
+                        </td>
+                        <td class="px-6 py-4 text-sm text-gray-700">{{ consent.consent_method|replace('_', ' ')|title if consent.consent_method else 'Not set' }}</td>
+                        <td class="px-6 py-4 text-sm text-gray-700">
+                            {{ consent.granted_by_name or 'Not set' }}
+                            {% if consent.granted_by_role %}
+                            <p class="text-xs text-gray-500">{{ consent.granted_by_role }}</p>
+                            {% endif %}
+                        </td>
+                        <td class="px-6 py-4 text-sm text-gray-700">{{ consent.sharing_channels_json|join(', ')|replace('_', ' ')|title if consent.sharing_channels_json else 'None' }}</td>
+                        <td class="px-6 py-4 text-sm text-gray-500">{{ consent.granted_at.strftime('%Y-%m-%d') if consent.granted_at else 'Not set' }}</td>
+                        <td class="px-6 py-4 text-sm text-gray-500">{{ consent.expires_at.strftime('%Y-%m-%d') if consent.expires_at else 'Not set' }}</td>
+                        <td class="px-6 py-4 text-sm text-gray-700">{{ consent.review_status|replace('_', ' ')|title if consent.review_status else 'Pending Review' }}</td>
+                        {% if can_edit %}
+                        <td class="px-6 py-4">
+                            {% if consent.consent_status == 'granted' and consent.active %}
+                            <form method="POST" action="{{ url_for('partner.withdraw_actor_consent', actor_id=actor.id, consent_id=consent.id) }}" class="flex gap-2">
+                                <input type="text" name="withdrawal_reason" placeholder="Reason" required
+                                       class="w-40 px-3 py-2 rounded-lg border border-gray-300 text-sm focus:ring-2 focus:ring-primary focus:border-transparent">
+                                <button type="submit" class="bg-red-600 text-white px-3 py-2 rounded-lg text-sm hover:bg-red-700 transition">Withdraw</button>
+                            </form>
+                            {% else %}
+                            <span class="text-sm text-gray-400">No action</span>
+                            {% endif %}
+                        </td>
+                        {% endif %}
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="{% if can_edit %}8{% else %}7{% endif %}" class="px-6 py-8 text-center text-gray-500">No consent records yet</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
