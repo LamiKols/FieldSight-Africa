@@ -31,6 +31,100 @@
     </div>
     {% endif %}
 
+    <div class="grid lg:grid-cols-3 gap-6 mb-6">
+        <div class="lg:col-span-2 bg-white rounded-xl shadow-sm border overflow-hidden">
+            <div class="px-6 py-4 border-b flex items-center justify-between gap-4">
+                <div>
+                    <h2 class="text-xl font-semibold text-gray-900">Document Preview</h2>
+                    <p class="text-sm text-gray-500 mt-1">{{ preview_policy.message }}</p>
+                </div>
+                {% if preview_policy.allowed %}
+                <span class="text-xs uppercase tracking-wide text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-3 py-1">Internal</span>
+                {% else %}
+                <span class="text-xs uppercase tracking-wide text-gray-600 bg-gray-100 border border-gray-200 rounded-full px-3 py-1">Metadata Only</span>
+                {% endif %}
+            </div>
+            <div class="p-6">
+                {% if preview_policy.allowed %}
+                    {% if preview_policy.preview_kind == 'image' %}
+                    <img src="{{ url_for('partner.preview_document', document_id=document.id) }}" alt="{{ document.title }}" class="w-full max-h-[560px] object-contain rounded-lg border bg-gray-50">
+                    {% elif preview_policy.preview_kind in ['pdf', 'text'] %}
+                    <iframe src="{{ url_for('partner.preview_document', document_id=document.id) }}" title="{{ document.title }} preview" class="w-full h-[560px] rounded-lg border bg-gray-50"></iframe>
+                    {% else %}
+                    <div class="rounded-lg border bg-gray-50 p-8 text-center text-sm text-gray-600">Preview is not available for this file type.</div>
+                    {% endif %}
+                {% else %}
+                <div class="rounded-lg border bg-gray-50 p-8 text-center text-sm text-gray-600">
+                    {{ preview_policy.message }}
+                </div>
+                {% endif %}
+
+                {% if preview_policy.consent_warning %}
+                <div class="mt-4 rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800">
+                    {{ preview_policy.consent_warning }}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <h2 class="text-xl font-semibold text-gray-900 mb-4">Document Intelligence</h2>
+            {% if latest_extraction_run %}
+            <dl class="space-y-3 text-sm">
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Run Status</dt><dd class="text-gray-900 text-right">{{ latest_extraction_run.status|replace('_', ' ')|title }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Intelligence</dt><dd class="text-gray-900 text-right">{{ latest_extraction_run.document_intelligence_status|replace('_', ' ')|title }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Template</dt><dd class="text-gray-900 text-right">{{ latest_extraction_run.template_profile_code or 'Not set' }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Quality</dt><dd class="text-gray-900 text-right">{{ latest_extraction_run.quality_score if latest_extraction_run.quality_score is not none else 'Not scored' }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Mismatches</dt><dd class="text-gray-900 text-right">{{ latest_extraction_run.metadata_mismatches_json|length if latest_extraction_run.metadata_mismatches_json else 0 }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Expiry Readiness</dt><dd class="text-gray-900 text-right">{{ latest_extraction_run.expiry_renewal_json.status|replace('_', ' ')|title if latest_extraction_run.expiry_renewal_json and latest_extraction_run.expiry_renewal_json.status else 'Not available' }}</dd></div>
+            </dl>
+
+            {% if latest_extraction_run.risk_flags_json %}
+            <div class="mt-5 pt-5 border-t">
+                <h3 class="text-sm font-medium text-gray-700 mb-2">Risk Flags</h3>
+                <div class="flex flex-wrap gap-2">
+                    {% for flag in latest_extraction_run.risk_flags_json %}
+                    <span class="text-xs bg-amber-50 text-amber-800 border border-amber-200 rounded-full px-3 py-1">{{ flag|replace('_', ' ')|title }}</span>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+
+            {% if extraction_rows %}
+            <div class="mt-5 pt-5 border-t">
+                <h3 class="text-sm font-medium text-gray-700 mb-2">Extracted Fields</h3>
+                <div class="space-y-2">
+                    {% for row in extraction_rows[:5] %}
+                    <div class="text-xs">
+                        <div class="flex justify-between gap-3">
+                            <span class="text-gray-500">{{ row.field_label or row.field_name|replace('_', ' ')|title }}</span>
+                            <span class="text-gray-900 text-right">{{ row.extracted_value or 'Not extracted' }}</span>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+
+            <div class="mt-6 space-y-3">
+                {% if can_extract %}
+                <a href="{{ url_for('partner.reconcile_document', document_id=document.id) }}" class="block text-center bg-white border border-primary text-primary px-4 py-2 rounded-lg hover:bg-gray-50 transition">Review Extracted Fields</a>
+                {% endif %}
+            </div>
+            {% else %}
+            <p class="text-sm text-gray-600">No extraction run has been created for this document.</p>
+            {% endif %}
+
+            {% if can_extract %}
+            <form method="POST" action="{{ url_for('partner.extract_document', document_id=document.id) }}" class="mt-4">
+                <button type="submit" class="w-full bg-primary text-white px-4 py-2 rounded-lg hover:bg-secondary transition">
+                    Extract Metadata
+                </button>
+            </form>
+            {% endif %}
+        </div>
+    </div>
+
     <div class="grid lg:grid-cols-2 gap-6">
         <div class="bg-white rounded-xl shadow-sm border p-6">
             <h2 class="text-xl font-semibold text-gray-900 mb-4">Document Metadata</h2>

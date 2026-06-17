@@ -2,6 +2,7 @@
 
 import hashlib
 import mimetypes
+import re
 import uuid
 from datetime import datetime
 from functools import wraps
@@ -21,6 +22,9 @@ from models import (
     CONSENT_SCOPE_OPTIONS,
     CONSENT_SHARING_CHANNEL_OPTIONS,
     CONSENT_STATUSES,
+    DOCUMENT_EXTRACTION_STATUSES,
+    DOCUMENT_INTELLIGENCE_STATUSES,
+    DOCUMENT_RECONCILIATION_STATUSES,
     DOCUMENT_VISIBILITY_LEVELS,
     PARTNER_DATASET_TYPES,
     PARTNER_ROLES,
@@ -37,6 +41,8 @@ from models import (
     Commodity,
     Crop,
     DocumentAccessLog,
+    DocumentExtractionRun,
+    DocumentFieldReconciliation,
     DocumentType,
     LGA,
     MarketActor,
@@ -65,6 +71,9 @@ SUBMITTER_ROLES = ("partner_admin", "data_reviewer")
 RESTRICTED_CONTACT_ROLES = ("partner_admin", "data_editor", "data_reviewer")
 DOCUMENT_DOWNLOAD_ROLES = ("partner_admin", "data_editor", "data_reviewer")
 ALLOWED_DOCUMENT_EXTENSIONS = {"pdf", "png", "jpg", "jpeg", "csv", "xls", "xlsx"}
+PREVIEWABLE_DOCUMENT_EXTENSIONS = {"pdf", "png", "jpg", "jpeg", "csv"}
+TEXT_EXTRACTION_EXTENSIONS = {"csv", "txt"}
+SAFE_EXCERPT_BYTES = 16384
 EXTERNAL_SHARING_CHANNELS = (
     "licensed_data_pack",
     "live_intelligence",
@@ -72,6 +81,56 @@ EXTERNAL_SHARING_CHANNELS = (
     "api",
     "approved_buyer_due_diligence",
 )
+
+CERTIFICATE_OF_ORIGIN_FIELDS = [
+    ("document_reference_number", "Document Reference Number"),
+    ("issuing_body", "Issuing Body"),
+    ("issued_at", "Issued Date"),
+    ("expires_at", "Expiry Date"),
+    ("exporter_name", "Exporter Name"),
+    ("consignee_name", "Consignee Name"),
+    ("origin_country", "Origin Country"),
+    ("destination_country", "Destination Country"),
+    ("crop_or_commodity", "Crop Or Commodity"),
+    ("quantity", "Quantity"),
+    ("port_of_exit", "Port Of Exit"),
+    ("certificate_type", "Certificate Type"),
+]
+GENERIC_EXTRACTION_FIELDS = [
+    ("document_reference_number", "Document Reference Number"),
+    ("issuing_body", "Issuing Body"),
+    ("issued_at", "Issued Date"),
+    ("expires_at", "Expiry Date"),
+    ("crop_or_commodity", "Crop Or Commodity"),
+]
+RECONCILABLE_DOCUMENT_FIELDS = {
+    "document_reference_number": "document_reference_number",
+    "issuing_body": "issuing_body",
+    "issued_at": "issued_at",
+    "expires_at": "expires_at",
+}
+FIELD_ALIASES = {
+    "reference_number": "document_reference_number",
+    "document_reference": "document_reference_number",
+    "certificate_number": "document_reference_number",
+    "certificate_reference": "document_reference_number",
+    "issuing_authority": "issuing_body",
+    "issuer": "issuing_body",
+    "issued_date": "issued_at",
+    "issue_date": "issued_at",
+    "expiry_date": "expires_at",
+    "expiration_date": "expires_at",
+    "valid_until": "expires_at",
+    "exporter": "exporter_name",
+    "consignee": "consignee_name",
+    "country_of_origin": "origin_country",
+    "destination": "destination_country",
+    "commodity": "crop_or_commodity",
+    "crop": "crop_or_commodity",
+    "port": "port_of_exit",
+    "exit_port": "port_of_exit",
+    "type": "certificate_type",
+}
 
 
 def get_partner_profile_for_user(user):
@@ -1051,6 +1110,345 @@ def add_audit_log(action, entity_type, entity_id, before_values=None, after_valu
     ))
 
 
+def document_version_file_metadata(document, version=None):
+    storage_path = document.storage_path
+    download_name = document.original_filename or document.stored_filename or f"document-{document.id}"
+    mime_type = document.mime_type
+
+    if version:
+        storage_path = version.storage_path or storage_path
+        download_name = version.original_filename or download_name
+        mime_type = version.content_type or mime_type
+
+    extension_source = download_name or storage_path or ""
+    extension = extension_source.rsplit(".", 1)[-1].lower() if "." in extension_source else ""
+    return storage_path, download_name, mime_type, extension
+
+
+def document_preview_policy(document, profile, version=None):
+    _storage_path, _download_name, mime_type, extension = document_version_file_metadata(document, version=version)
+    document_category = consent_document_category_for_document_type(document.document_type)
+    subscriber_shareable = actor_can_share_documents(document.market_actor, "subscriber_portal", document_category)
+    partner_shareable = actor_can_share_documents(document.market_actor, "partner_portal", document_category)
+    sensitive = bool(document.document_type and document.document_type.sensitive)
+
+    allowed = True
+    message = "Preview is available for internal partner review."
+    preview_kind = "file"
+
+    if extension not in PREVIEWABLE_DOCUMENT_EXTENSIONS:
+        allowed = False
+        preview_kind = "unsupported"
+        message = "Inline preview is not available for this file type."
+    elif sensitive and profile.partner_role == "partner_viewer":
+        allowed = False
+        preview_kind = "metadata_only"
+        message = "Sensitive document types remain metadata-only for partner viewers."
+
+    if extension in {"png", "jpg", "jpeg"}:
+        preview_kind = "image"
+    elif extension == "pdf":
+        preview_kind = "pdf"
+    elif extension == "csv" or (mime_type or "").startswith("text/"):
+        preview_kind = "text"
+
+    return {
+        "allowed": allowed,
+        "message": message,
+        "preview_kind": preview_kind,
+        "sensitive": sensitive,
+        "document_category": document_category,
+        "partner_shareable": partner_shareable,
+        "subscriber_shareable": subscriber_shareable,
+        "consent_warning": None if subscriber_shareable else "External subscriber sharing remains blocked by consent.",
+    }
+
+
+def latest_document_extraction_run(document):
+    return (
+        DocumentExtractionRun.query.filter_by(actor_document_id=document.id)
+        .order_by(DocumentExtractionRun.created_at.desc(), DocumentExtractionRun.id.desc())
+        .first()
+    )
+
+
+def extraction_profile_for_document(document):
+    document_type = document.document_type
+    document_type_code = document_type.code if document_type else None
+    document_type_name = (document_type.name if document_type else "").lower()
+    if document_type_code == "certificate_of_origin" or "certificate of origin" in document_type_name:
+        return "certificate_of_origin_v1", CERTIFICATE_OF_ORIGIN_FIELDS
+    return "generic_document_metadata_v1", GENERIC_EXTRACTION_FIELDS
+
+
+def normalized_field_key(value):
+    cleaned = re.sub(r"[^a-z0-9]+", "_", (value or "").strip().lower()).strip("_")
+    return FIELD_ALIASES.get(cleaned, cleaned)
+
+
+def read_safe_text_excerpt(file_path):
+    content = file_path.read_bytes()[:SAFE_EXCERPT_BYTES]
+    return content.decode("utf-8", errors="ignore").replace("\x00", " ").strip()
+
+
+def extract_key_value_fields(raw_text, allowed_fields):
+    allowed = {field_name for field_name, _label in allowed_fields}
+    extracted_fields = {}
+    evidence = {}
+
+    for line_number, line in enumerate((raw_text or "").splitlines(), start=1):
+        if ":" in line:
+            key, value = line.split(":", 1)
+        elif "=" in line:
+            key, value = line.split("=", 1)
+        else:
+            continue
+
+        field_name = normalized_field_key(key)
+        cleaned_value = value.strip()
+        if field_name not in allowed or not cleaned_value or field_name in extracted_fields:
+            continue
+
+        extracted_fields[field_name] = cleaned_value[:500]
+        evidence[field_name] = {
+            "source": "text_excerpt",
+            "line_number": line_number,
+            "excerpt": line.strip()[:240],
+            "page": None,
+            "bounding_box": None,
+        }
+
+    return extracted_fields, evidence
+
+
+def document_field_current_value(document, field_name):
+    if field_name == "document_reference_number":
+        return document.document_reference_number or ""
+    if field_name == "issuing_body":
+        return document.issuing_body or ""
+    if field_name == "issued_at":
+        return document.issued_at.isoformat() if document.issued_at else ""
+    if field_name == "expires_at":
+        return document.expires_at.isoformat() if document.expires_at else ""
+    if field_name == "crop_or_commodity":
+        if document.linked_commodity:
+            return document.linked_commodity.name or ""
+        if document.linked_crop:
+            return document.linked_crop.name or ""
+    metadata = document.metadata_json or {}
+    value = metadata.get(field_name)
+    return "" if value is None else str(value)
+
+
+def normalized_comparison_value(value):
+    return re.sub(r"\s+", " ", str(value or "").strip()).lower()
+
+
+def build_metadata_mismatches(document, extracted_fields):
+    mismatches = []
+    for field_name in RECONCILABLE_DOCUMENT_FIELDS:
+        extracted_value = extracted_fields.get(field_name)
+        if not extracted_value:
+            continue
+        current_value = document_field_current_value(document, field_name)
+        if normalized_comparison_value(current_value) != normalized_comparison_value(extracted_value):
+            mismatches.append({
+                "field_name": field_name,
+                "current_value": current_value,
+                "extracted_value": extracted_value,
+            })
+    return mismatches
+
+
+def parse_extracted_date(value):
+    if not value:
+        return None
+    for date_format in ("%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y", "%d-%m-%Y"):
+        try:
+            return datetime.strptime(str(value).strip(), date_format).date()
+        except ValueError:
+            continue
+    return None
+
+
+def build_extraction_risk_flags(document, extracted_fields, mismatches):
+    risk_flags = []
+    document_type = document.document_type
+
+    if document_type and document_type.requires_reference_number and not extracted_fields.get("document_reference_number"):
+        risk_flags.append("missing_reference_number")
+    if document_type and document_type.requires_issuing_body and not extracted_fields.get("issuing_body"):
+        risk_flags.append("missing_issuing_body")
+    if mismatches:
+        risk_flags.append("metadata_mismatch")
+
+    expiry_value = extracted_fields.get("expires_at") or (document.expires_at.isoformat() if document.expires_at else "")
+    expiry_date = parse_extracted_date(expiry_value)
+    if expiry_date:
+        days_until_expiry = (expiry_date - datetime.utcnow().date()).days
+        if days_until_expiry < 0:
+            risk_flags.append("expired_document")
+        elif days_until_expiry <= 60:
+            risk_flags.append("renewal_due_soon")
+
+    if not extracted_fields:
+        risk_flags.append("no_fields_extracted")
+
+    return risk_flags
+
+
+def build_expiry_renewal_status(document, extracted_fields):
+    expiry_value = extracted_fields.get("expires_at") or (document.expires_at.isoformat() if document.expires_at else "")
+    expiry_date = parse_extracted_date(expiry_value)
+    if not expiry_date:
+        return {"status": "not_available", "expires_at": None, "days_until_expiry": None}
+
+    days_until_expiry = (expiry_date - datetime.utcnow().date()).days
+    if days_until_expiry < 0:
+        status = "expired"
+    elif days_until_expiry <= 60:
+        status = "renewal_due_soon"
+    else:
+        status = "current"
+    return {
+        "status": status,
+        "expires_at": expiry_date.isoformat(),
+        "days_until_expiry": days_until_expiry,
+    }
+
+
+def calculate_extraction_quality_score(profile_fields, extracted_fields, confidence_json, mismatches, risk_flags):
+    total_fields = max(len(profile_fields), 1)
+    coverage = len([field_name for field_name, _label in profile_fields if extracted_fields.get(field_name)]) / total_fields
+    confidence_values = [confidence_json.get(field_name, 0) for field_name, _label in profile_fields]
+    average_confidence = sum(confidence_values) / len(confidence_values) if confidence_values else 0
+    penalty = min((len(mismatches) * 5) + (len(risk_flags) * 3), 35)
+    return max(0, min(100, round((coverage * 55) + (average_confidence * 45) - penalty)))
+
+
+def document_extraction_payload(document, version, file_path):
+    profile_code, profile_fields = extraction_profile_for_document(document)
+    raw_text_excerpt = read_safe_text_excerpt(file_path)
+    extracted_fields, evidence = extract_key_value_fields(raw_text_excerpt, profile_fields)
+    confidence_json = {
+        field_name: (0.86 if extracted_fields.get(field_name) else 0.0)
+        for field_name, _label in profile_fields
+    }
+    provenance = {
+        field_name: {
+            "extractor_type": "template",
+            "template_profile_code": profile_code,
+            "source": "current_document_version",
+            "actor_document_version_id": version.id if version else None,
+        }
+        for field_name, _label in profile_fields
+    }
+    mismatches = build_metadata_mismatches(document, extracted_fields)
+    risk_flags = build_extraction_risk_flags(document, extracted_fields, mismatches)
+    expiry_renewal = build_expiry_renewal_status(document, extracted_fields)
+    quality_score = calculate_extraction_quality_score(profile_fields, extracted_fields, confidence_json, mismatches, risk_flags)
+    status = "needs_review" if mismatches or risk_flags else "completed"
+    intelligence_status = "needs_reconciliation" if mismatches else "extracted"
+
+    return {
+        "template_profile_code": profile_code,
+        "profile_fields": profile_fields,
+        "status": status,
+        "document_intelligence_status": intelligence_status,
+        "raw_text_excerpt": raw_text_excerpt[:1000],
+        "extracted_fields": extracted_fields,
+        "confidence_json": confidence_json,
+        "evidence": evidence,
+        "provenance": provenance,
+        "mismatches": mismatches,
+        "risk_flags": risk_flags,
+        "expiry_renewal": expiry_renewal,
+        "quality_score": quality_score,
+    }
+
+
+def create_reconciliation_rows(document, extraction_run, payload):
+    for field_name, field_label in payload["profile_fields"]:
+        current_value = document_field_current_value(document, field_name)
+        extracted_value = payload["extracted_fields"].get(field_name, "")
+        db.session.add(DocumentFieldReconciliation(
+            actor_document_id=document.id,
+            extraction_run_id=extraction_run.id,
+            field_name=field_name,
+            field_label=field_label,
+            current_value=current_value,
+            extracted_value=extracted_value,
+            confidence=payload["confidence_json"].get(field_name, 0.0),
+            status="pending",
+            evidence_json=payload["evidence"].get(field_name, {
+                "source": "not_extracted",
+                "page": None,
+                "bounding_box": None,
+            }),
+            provenance_json=payload["provenance"].get(field_name, {}),
+            risk_flags_json=[
+                mismatch["field_name"]
+                for mismatch in payload["mismatches"]
+                if mismatch["field_name"] == field_name
+            ],
+            decision_history_json=[],
+        ))
+
+
+def latest_reconciliation_rows(extraction_run):
+    if not extraction_run:
+        return []
+    return (
+        DocumentFieldReconciliation.query.filter_by(extraction_run_id=extraction_run.id)
+        .order_by(DocumentFieldReconciliation.id)
+        .all()
+    )
+
+
+def apply_reconciled_document_value(document, field_name, value, errors):
+    if field_name not in RECONCILABLE_DOCUMENT_FIELDS:
+        return False
+
+    cleaned_value = (value or "").strip()
+    attribute = RECONCILABLE_DOCUMENT_FIELDS[field_name]
+    if field_name in {"issued_at", "expires_at"}:
+        parsed_date = parse_extracted_date(cleaned_value)
+        if cleaned_value and not parsed_date:
+            errors.append(f"{field_name.replace('_', ' ').title()} must use a supported date format.")
+            return False
+        setattr(document, attribute, parsed_date)
+    else:
+        setattr(document, attribute, cleaned_value or None)
+    return True
+
+
+def append_reconciliation_decision(row, action, accepted_value, notes):
+    history = list(row.decision_history_json or [])
+    history.append({
+        "action": action,
+        "accepted_value": accepted_value,
+        "notes": notes or None,
+        "reviewed_by_user_id": current_user.id,
+        "reviewed_at": datetime.utcnow().isoformat(),
+    })
+    row.decision_history_json = history
+
+
+def update_extraction_run_status(extraction_run):
+    rows = latest_reconciliation_rows(extraction_run)
+    if not rows:
+        extraction_run.status = "completed"
+        extraction_run.document_intelligence_status = "extracted"
+        return
+
+    if any(row.status == "pending" for row in rows):
+        extraction_run.status = "needs_review"
+        extraction_run.document_intelligence_status = "needs_reconciliation"
+    else:
+        extraction_run.status = "completed"
+        extraction_run.document_intelligence_status = "reconciled"
+
+
 def get_or_create_direct_change_batch(profile):
     month = datetime.utcnow().strftime("%Y-%m")
     title = f"Direct actor changes - {month}"
@@ -1465,6 +1863,8 @@ def document_detail(document_id):
     add_document_access_log(document, "metadata_view", version=version)
     db.session.commit()
     document_consent_category = consent_document_category_for_document_type(document.document_type)
+    preview_policy = document_preview_policy(document, profile, version=version)
+    latest_extraction_run = latest_document_extraction_run(document)
     return render_template(
         "partner/document_detail.html",
         profile=profile,
@@ -1477,6 +1877,205 @@ def document_detail(document_id):
         active_consent=get_active_actor_consent(actor),
         document_shareable=actor_can_share_documents(actor, "subscriber_portal", document_consent_category),
         document_consent_category=document_consent_category,
+        preview_policy=preview_policy,
+        latest_extraction_run=latest_extraction_run,
+        extraction_rows=latest_reconciliation_rows(latest_extraction_run),
+        can_extract=can_edit_partner_records(profile),
+    )
+
+
+@partner_bp.route("/documents/<int:document_id>/preview")
+@login_required
+@require_partner_user
+def preview_document(document_id):
+    profile = get_current_partner_profile()
+    document = get_partner_document_or_404(document_id, profile)
+    version = current_document_version(document)
+    preview_policy = document_preview_policy(document, profile, version=version)
+    if not preview_policy["allowed"]:
+        abort(403 if preview_policy["preview_kind"] == "metadata_only" else 415)
+
+    storage_path, download_name, mime_type, _extension = document_version_file_metadata(document, version=version)
+    if not storage_path:
+        abort(404)
+
+    file_path = resolve_document_storage_path(storage_path)
+    if not file_path.exists() or not file_path.is_file():
+        abort(404)
+
+    add_document_access_log(document, "preview", version=version)
+    db.session.commit()
+
+    response = send_file(
+        file_path,
+        as_attachment=False,
+        download_name=download_name,
+        mimetype=mime_type or mimetypes.guess_type(download_name)[0],
+    )
+    response.headers["Cache-Control"] = "private, no-store"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-FieldSight-External-Shareable"] = "true" if preview_policy["subscriber_shareable"] else "false"
+    return response
+
+
+@partner_bp.route("/documents/<int:document_id>/extract", methods=["POST"])
+@login_required
+@require_partner_user
+@require_partner_role(*EDITOR_ROLES)
+def extract_document(document_id):
+    profile = get_current_partner_profile()
+    document = get_partner_document_or_404(document_id, profile)
+    version = current_document_version(document)
+    storage_path, download_name, _mime_type, _extension = document_version_file_metadata(document, version=version)
+    if not storage_path:
+        abort(404)
+
+    file_path = resolve_document_storage_path(storage_path)
+    if not file_path.exists() or not file_path.is_file():
+        abort(404)
+
+    document_category = consent_document_category_for_document_type(document.document_type)
+    externally_shareable = actor_can_share_documents(document.market_actor, "subscriber_portal", document_category)
+    payload = document_extraction_payload(document, version, file_path)
+    if payload["status"] not in DOCUMENT_EXTRACTION_STATUSES:
+        payload["status"] = "needs_review"
+    if payload["document_intelligence_status"] not in DOCUMENT_INTELLIGENCE_STATUSES:
+        payload["document_intelligence_status"] = "needs_reconciliation"
+
+    extraction_run = DocumentExtractionRun(
+        actor_document_id=document.id,
+        actor_document_version_id=version.id if version else None,
+        status=payload["status"],
+        extractor_type="template",
+        document_type_code=document.document_type.code if document.document_type else None,
+        template_profile_code=payload["template_profile_code"],
+        source_filename=download_name,
+        extracted_fields_json=payload["extracted_fields"],
+        confidence_json=payload["confidence_json"],
+        field_evidence_json=payload["evidence"],
+        provenance_json=payload["provenance"],
+        metadata_mismatches_json=payload["mismatches"],
+        risk_flags_json=payload["risk_flags"],
+        expiry_renewal_json=payload["expiry_renewal"],
+        quality_score=payload["quality_score"],
+        document_intelligence_status=payload["document_intelligence_status"],
+        raw_text_excerpt=payload["raw_text_excerpt"],
+        created_by_user_id=current_user.id,
+    )
+    db.session.add(extraction_run)
+    db.session.flush()
+    create_reconciliation_rows(document, extraction_run, payload)
+    add_audit_log(
+        "partner_document_extraction_created",
+        "actor_document",
+        document.id,
+        after_values={
+            "extraction_run_id": extraction_run.id,
+            "status": extraction_run.status,
+            "template_profile_code": extraction_run.template_profile_code,
+            "quality_score": extraction_run.quality_score,
+            "metadata_mismatch_count": len(payload["mismatches"]),
+            "external_subscriber_shareable": externally_shareable,
+        },
+        organization_id=profile.partner_organization_id,
+    )
+    db.session.commit()
+
+    if not externally_shareable:
+        flash("Metadata was extracted for internal review. External sharing remains blocked unless active consent allows it.", "warning")
+    else:
+        flash("Metadata extraction run created for review.", "success")
+    return redirect(url_for("partner.document_detail", document_id=document.id))
+
+
+@partner_bp.route("/documents/<int:document_id>/reconcile", methods=["GET", "POST"])
+@login_required
+@require_partner_user
+@require_partner_role(*EDITOR_ROLES)
+def reconcile_document(document_id):
+    profile = get_current_partner_profile()
+    document = get_partner_document_or_404(document_id, profile)
+    extraction_run = latest_document_extraction_run(document)
+    if not extraction_run:
+        flash("Run extraction before reconciling document fields.", "error")
+        return redirect(url_for("partner.document_detail", document_id=document.id))
+
+    rows = latest_reconciliation_rows(extraction_run)
+    if request.method == "POST":
+        before_values = document_snapshot(document)
+        errors = []
+        for row in rows:
+            action = clean_form_value(f"action_{row.id}")
+            notes = clean_form_value(f"notes_{row.id}")
+            if not action:
+                continue
+            if action not in DOCUMENT_RECONCILIATION_STATUSES:
+                errors.append(f"Unsupported reconciliation action for {row.field_label or row.field_name}.")
+                continue
+
+            accepted_value = row.extracted_value
+            if action == "accepted":
+                row.status = "accepted"
+            elif action == "rejected":
+                accepted_value = ""
+                row.status = "rejected"
+            elif action == "manually_overridden":
+                accepted_value = clean_form_value(f"override_{row.id}")
+                row.status = "manually_overridden"
+            else:
+                row.status = "pending"
+                continue
+
+            row.accepted_value = accepted_value or None
+            row.manual_correction_notes = notes or None
+            row.reviewed_by_user_id = current_user.id
+            row.reviewed_at = datetime.utcnow()
+            if row.status in {"accepted", "manually_overridden"}:
+                apply_reconciled_document_value(document, row.field_name, accepted_value, errors)
+            append_reconciliation_decision(row, row.status, accepted_value, notes)
+
+        if errors:
+            for error in errors:
+                flash(error, "error")
+            return render_template(
+                "partner/document_reconcile.html",
+                profile=profile,
+                organization=profile.partner_organization,
+                document=document,
+                actor=document.market_actor,
+                extraction_run=extraction_run,
+                rows=rows,
+                reconcilable_fields=RECONCILABLE_DOCUMENT_FIELDS,
+            )
+
+        update_extraction_run_status(extraction_run)
+        db.session.flush()
+        after_values = document_snapshot(document)
+        add_audit_log(
+            "partner_document_reconciliation_updated",
+            "actor_document",
+            document.id,
+            before_values=before_values,
+            after_values={
+                "document": after_values,
+                "extraction_run_id": extraction_run.id,
+                "document_intelligence_status": extraction_run.document_intelligence_status,
+            },
+            organization_id=profile.partner_organization_id,
+        )
+        db.session.commit()
+        flash("Document field reconciliation saved.", "success")
+        return redirect(url_for("partner.document_detail", document_id=document.id))
+
+    return render_template(
+        "partner/document_reconcile.html",
+        profile=profile,
+        organization=profile.partner_organization,
+        document=document,
+        actor=document.market_actor,
+        extraction_run=extraction_run,
+        rows=rows,
+        reconcilable_fields=RECONCILABLE_DOCUMENT_FIELDS,
     )
 
 
