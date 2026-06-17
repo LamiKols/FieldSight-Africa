@@ -46,6 +46,7 @@ Thumbs.db
 *.log
 *.csv
 uploads/
+private_uploads/
 
 # Local state
 .local/
