@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+
+{% block title %}Reconcile Extracted Fields - FieldSight Africa{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="flex items-center justify-between mb-8">
+        <div>
+            <a href="{{ url_for('partner.document_detail', document_id=document.id) }}" class="text-primary hover:underline text-sm">&larr; Back to Document</a>
+            <h1 class="text-3xl font-bold text-gray-900 mt-3">Reconcile Extracted Fields</h1>
+            <p class="text-gray-600 mt-1">{{ document.title }} | {{ actor.name }}</p>
+        </div>
+        <div class="text-right text-sm text-gray-600">
+            <p>Run {{ extraction_run.id }}</p>
+            <p>{{ extraction_run.template_profile_code or 'No template' }}</p>
+        </div>
+    </div>
+
+    <div class="grid lg:grid-cols-4 gap-6 mb-6">
+        <div class="bg-white rounded-xl shadow-sm border p-5">
+            <p class="text-xs uppercase text-gray-500">Run Status</p>
+            <p class="text-lg font-semibold text-gray-900 mt-1">{{ extraction_run.status|replace('_', ' ')|title }}</p>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border p-5">
+            <p class="text-xs uppercase text-gray-500">Quality Score</p>
+            <p class="text-lg font-semibold text-gray-900 mt-1">{{ extraction_run.quality_score if extraction_run.quality_score is not none else 'Not scored' }}</p>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border p-5">
+            <p class="text-xs uppercase text-gray-500">Mismatches</p>
+            <p class="text-lg font-semibold text-gray-900 mt-1">{{ extraction_run.metadata_mismatches_json|length if extraction_run.metadata_mismatches_json else 0 }}</p>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border p-5">
+            <p class="text-xs uppercase text-gray-500">Intelligence</p>
+            <p class="text-lg font-semibold text-gray-900 mt-1">{{ extraction_run.document_intelligence_status|replace('_', ' ')|title }}</p>
+        </div>
+    </div>
+
+    <form method="POST" class="bg-white rounded-xl shadow-sm border overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="w-full">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Field</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Current</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Extracted</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Evidence</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Decision</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Override</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Notes</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y">
+                    {% for row in rows %}
+                    <tr>
+                        <td class="px-5 py-4 align-top">
+                            <p class="font-medium text-sm text-gray-900">{{ row.field_label or row.field_name|replace('_', ' ')|title }}</p>
+                            <p class="text-xs text-gray-500">{{ row.status|replace('_', ' ')|title }}</p>
+                            {% if row.field_name not in reconcilable_fields %}
+                            <p class="text-xs text-amber-700 mt-1">Stored in reconciliation only</p>
+                            {% endif %}
+                        </td>
+                        <td class="px-5 py-4 align-top text-sm text-gray-700">{{ row.current_value or 'Not set' }}</td>
+                        <td class="px-5 py-4 align-top">
+                            <p class="text-sm text-gray-900">{{ row.extracted_value or 'Not extracted' }}</p>
+                            <p class="text-xs text-gray-500">{{ ((row.confidence or 0) * 100)|round|int }}% confidence</p>
+                        </td>
+                        <td class="px-5 py-4 align-top text-xs text-gray-600 max-w-xs">
+                            {{ row.evidence_json.excerpt if row.evidence_json and row.evidence_json.excerpt else 'No text evidence captured' }}
+                        </td>
+                        <td class="px-5 py-4 align-top">
+                            <select name="action_{{ row.id }}" class="w-full min-w-40 px-3 py-2 rounded-lg border border-gray-300 text-sm">
+                                <option value="">No change</option>
+                                <option value="accepted">Accept extracted</option>
+                                <option value="rejected">Reject</option>
+                                <option value="manually_overridden">Manual override</option>
+                            </select>
+                        </td>
+                        <td class="px-5 py-4 align-top">
+                            <input type="text" name="override_{{ row.id }}" value="{{ row.accepted_value if row.status == 'manually_overridden' and row.accepted_value else '' }}"
+                                   class="w-full min-w-48 px-3 py-2 rounded-lg border border-gray-300 text-sm">
+                        </td>
+                        <td class="px-5 py-4 align-top">
+                            <input type="text" name="notes_{{ row.id }}" value="{{ row.manual_correction_notes or '' }}"
+                                   class="w-full min-w-48 px-3 py-2 rounded-lg border border-gray-300 text-sm">
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="7" class="px-6 py-8 text-center text-gray-500">No extracted fields are available for reconciliation.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="px-6 py-4 border-t bg-gray-50 flex items-center justify-end gap-3">
+            <a href="{{ url_for('partner.document_detail', document_id=document.id) }}" class="bg-white border border-gray-300 text-gray-700 px-5 py-2 rounded-lg hover:bg-gray-100 transition">Cancel</a>
+            <button type="submit" class="bg-primary text-white px-5 py-2 rounded-lg hover:bg-secondary transition">Save Reconciliation</button>
+        </div>
+    </form>
+</div>
+{% endblock %}

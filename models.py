@@ -90,6 +90,36 @@ DOCUMENT_VISIBILITY_LEVELS = [
     "full_document",
 ]
 
+DOCUMENT_EXTRACTION_STATUSES = [
+    "pending",
+    "completed",
+    "failed",
+    "needs_review",
+]
+
+DOCUMENT_EXTRACTOR_TYPES = [
+    "manual",
+    "template",
+    "pdf_text",
+    "ocr_placeholder",
+    "ai_placeholder",
+]
+
+DOCUMENT_INTELLIGENCE_STATUSES = [
+    "not_started",
+    "extracted",
+    "needs_reconciliation",
+    "reconciled",
+    "failed",
+]
+
+DOCUMENT_RECONCILIATION_STATUSES = [
+    "pending",
+    "accepted",
+    "rejected",
+    "manually_overridden",
+]
+
 CONSENT_STATUSES = [
     "not_requested",
     "requested",
@@ -844,6 +874,62 @@ class ActorDocumentVersion(db.Model):
     __table_args__ = (
         db.UniqueConstraint('actor_document_id', 'version_number', name='unique_document_version'),
     )
+
+
+class DocumentExtractionRun(TimestampMixin, db.Model):
+    __tablename__ = 'document_extraction_runs'
+
+    id = db.Column(db.Integer, primary_key=True)
+    actor_document_id = db.Column(db.Integer, db.ForeignKey('actor_documents.id'), nullable=False)
+    actor_document_version_id = db.Column(db.Integer, db.ForeignKey('actor_document_versions.id'))
+    status = db.Column(db.String(50), default='pending')
+    extractor_type = db.Column(db.String(80), default='template')
+    document_type_code = db.Column(db.String(80))
+    template_profile_code = db.Column(db.String(120))
+    source_filename = db.Column(db.String(255))
+    extracted_fields_json = db.Column(db.JSON, default=dict)
+    confidence_json = db.Column(db.JSON, default=dict)
+    field_evidence_json = db.Column(db.JSON, default=dict)
+    provenance_json = db.Column(db.JSON, default=dict)
+    metadata_mismatches_json = db.Column(db.JSON, default=list)
+    risk_flags_json = db.Column(db.JSON, default=list)
+    expiry_renewal_json = db.Column(db.JSON, default=dict)
+    quality_score = db.Column(db.Integer)
+    document_intelligence_status = db.Column(db.String(80), default='not_started')
+    manual_correction_notes = db.Column(db.Text)
+    raw_text_excerpt = db.Column(db.Text)
+    error_message = db.Column(db.Text)
+    created_by_user_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+
+    actor_document = db.relationship('ActorDocument', backref='extraction_runs')
+    actor_document_version = db.relationship('ActorDocumentVersion', backref='extraction_runs')
+    created_by_user = db.relationship('User', backref='document_extraction_runs')
+
+
+class DocumentFieldReconciliation(TimestampMixin, db.Model):
+    __tablename__ = 'document_field_reconciliations'
+
+    id = db.Column(db.Integer, primary_key=True)
+    actor_document_id = db.Column(db.Integer, db.ForeignKey('actor_documents.id'), nullable=False)
+    extraction_run_id = db.Column(db.Integer, db.ForeignKey('document_extraction_runs.id'), nullable=False)
+    field_name = db.Column(db.String(120), nullable=False)
+    field_label = db.Column(db.String(180))
+    current_value = db.Column(db.Text)
+    extracted_value = db.Column(db.Text)
+    accepted_value = db.Column(db.Text)
+    confidence = db.Column(db.Float)
+    status = db.Column(db.String(50), default='pending')
+    evidence_json = db.Column(db.JSON, default=dict)
+    provenance_json = db.Column(db.JSON, default=dict)
+    risk_flags_json = db.Column(db.JSON, default=list)
+    decision_history_json = db.Column(db.JSON, default=list)
+    manual_correction_notes = db.Column(db.Text)
+    reviewed_by_user_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+    reviewed_at = db.Column(db.DateTime)
+
+    actor_document = db.relationship('ActorDocument', backref='field_reconciliations')
+    extraction_run = db.relationship('DocumentExtractionRun', backref='field_reconciliations')
+    reviewed_by_user = db.relationship('User', backref='document_field_reconciliations')
 
 
 class DocumentReview(TimestampMixin, db.Model):
