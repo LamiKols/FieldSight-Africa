@@ -1142,17 +1142,16 @@ def get_active_actor_consent(actor, now=None):
     if not actor:
         return None
 
-    consent_records = (
+    latest_consent_record = (
         ActorConsentRecord.query.filter_by(
             market_actor_id=actor.id,
             partner_organization_id=actor.partner_organization_id,
         )
         .order_by(ActorConsentRecord.updated_at.desc(), ActorConsentRecord.id.desc())
-        .all()
+        .first()
     )
-    for consent_record in consent_records:
-        if consent_record_is_active(consent_record, now=now):
-            return consent_record
+    if consent_record_is_active(latest_consent_record, now=now):
+        return latest_consent_record
     return None
 
 

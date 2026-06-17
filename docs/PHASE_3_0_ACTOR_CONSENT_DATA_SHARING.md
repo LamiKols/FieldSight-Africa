@@ -56,6 +56,8 @@ The model is scoped to both `MarketActor` and `PartnerOrganization`. This keeps 
 
 `consent_document_id` can link to an uploaded `ActorDocument` when a signed consent form is stored in the Phase 3 private document vault.
 
+Latest decision rule: the latest consent record for an actor and partner organization is authoritative. Creating a new consent record deactivates prior active records for that actor and partner organization, and helper functions only consider the latest record when deciding whether sharing is currently allowed. This means a later refused, requested, withdrawn, or expired record prevents an older granted record from keeping the actor shareable.
+
 ## 3. Consent Statuses
 
 Supported statuses:
@@ -169,6 +171,7 @@ Rules:
 
 - Consent must be `granted`.
 - Consent must be `active`.
+- Consent must be the latest consent decision for that actor and partner organization.
 - Consent must not be withdrawn.
 - Consent must not be expired.
 - Consent must not have `review_status = rejected`.

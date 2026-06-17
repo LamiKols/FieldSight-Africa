@@ -700,6 +700,14 @@ def apply_consent_values(consent_record, values):
     consent_record.review_notes = values["review_notes"]
 
 
+def deactivate_prior_actor_consents(actor, profile):
+    ActorConsentRecord.query.filter(
+        ActorConsentRecord.market_actor_id == actor.id,
+        ActorConsentRecord.partner_organization_id == profile.partner_organization_id,
+        ActorConsentRecord.active.is_(True),
+    ).update({"active": False}, synchronize_session=False)
+
+
 def consent_snapshot(consent_record):
     return {
         "id": consent_record.id,
@@ -1297,6 +1305,7 @@ def new_actor_consent(actor_id):
                 flash(error, "error")
             return render_template("partner/consent_form.html", **consent_form_context(profile, actor))
 
+        deactivate_prior_actor_consents(actor, profile)
         consent_record = ActorConsentRecord(
             market_actor_id=actor.id,
             partner_organization_id=profile.partner_organization_id,

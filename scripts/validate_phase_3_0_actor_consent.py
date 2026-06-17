@@ -125,6 +125,16 @@ def granted_consent_form_data():
     }
 
 
+def refused_consent_form_data():
+    data = granted_consent_form_data()
+    data.update({
+        "consent_status": "refused",
+        "consent_reference": "CONSENT-REFUSED-001",
+        "review_notes": "Actor refused later sharing permission",
+    })
+    return data
+
+
 def make_actor(name, organization, user, actor_type="exporter"):
     actor = MarketActor(
         partner_organization_id=organization.id,
@@ -265,9 +275,44 @@ def run_validation():
             assert_true(actor_can_share_documents(actor, "subscriber_portal", document_category) is True, "Document sharing helper rejected valid consent")
             assert_true(AuditLog.query.filter_by(action="consent_created", entity_id=consent_id).first() is not None, "Consent create audit log was not written")
 
+        response = client.post(
+            f"/partner/actors/{actor_id}/consent/new",
+            data=refused_consent_form_data(),
+            follow_redirects=False,
+        )
+        assert_true(response.status_code in (302, 303), "Later refused consent creation did not redirect after success")
+
+        with app.app_context():
+            actor = db.session.get(MarketActor, actor_id)
+            granted_consent = db.session.get(ActorConsentRecord, consent_id)
+            refused_consent = ActorConsentRecord.query.filter_by(market_actor_id=actor_id, consent_status="refused").one()
+            refused_consent_id = refused_consent.id
+            assert_true(granted_consent.active is False, "Later refused consent did not deactivate prior active grant")
+            assert_true(actor_has_active_consent(actor) is False, "Active consent helper returned true after later refusal")
+            assert_true(actor_can_share_data(actor, "subscriber_portal") is False, "Data sharing helper returned true after later refusal")
+            assert_true(actor_can_share_documents(actor, "subscriber_portal", document_category) is False, "Document sharing helper returned true after later refusal")
+            assert_true(AuditLog.query.filter_by(action="consent_created", entity_id=refused_consent_id).first() is not None, "Refused consent create audit log was not written")
+
         response = client.get(f"/partner/actors/{actor_id}/consent")
         history_page = response.get_data(as_text=True)
-        assert_true(response.status_code == 200 and "Consent History" in history_page and "Granted" in history_page, "Consent history page did not render granted consent")
+        assert_true(response.status_code == 200 and "Consent History" in history_page and "Refused" in history_page, "Consent history page did not render later refused consent")
+
+        response = client.post(
+            f"/partner/actors/{actor_id}/consent/new",
+            data=granted_consent_form_data(),
+            follow_redirects=False,
+        )
+        assert_true(response.status_code in (302, 303), "Replacement granted consent creation did not redirect after success")
+
+        with app.app_context():
+            actor = db.session.get(MarketActor, actor_id)
+            replacement_consent = (
+                ActorConsentRecord.query.filter_by(market_actor_id=actor_id, consent_status="granted")
+                .order_by(ActorConsentRecord.id.desc())
+                .first()
+            )
+            consent_id = replacement_consent.id
+            assert_true(actor_has_active_consent(actor) is True, "Replacement granted consent did not restore active consent")
 
         response = client.post(
             f"/partner/actors/{actor_id}/consent/{consent_id}/withdraw",
