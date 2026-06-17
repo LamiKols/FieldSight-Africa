@@ -20,7 +20,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from models import db, User, PaymentPlan, Dataset, LicensedPack
+from models import db, User, PaymentPlan, Dataset, LicensedPack, Region, Crop, DocumentType
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SESSION_SECRET', 'dev-secret-key')
@@ -30,6 +30,11 @@ app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
     'pool_recycle': 300,
     'pool_pre_ping': True,
 }
+app.config['PRIVATE_UPLOAD_ROOT'] = os.environ.get('PRIVATE_UPLOAD_ROOT', 'private_uploads')
+app.config['DOCUMENT_STORAGE_BACKEND'] = os.environ.get('DOCUMENT_STORAGE_BACKEND', 'local_private')
+app.config['S3_COMPATIBLE_ENDPOINT'] = os.environ.get('S3_COMPATIBLE_ENDPOINT')
+app.config['S3_BUCKET_NAME'] = os.environ.get('S3_BUCKET_NAME')
+app.config['S3_REGION'] = os.environ.get('S3_REGION')
 
 db.init_app(app)
 
@@ -62,17 +67,17 @@ def migrate_payment_plans_table():
     from sqlalchemy import text
     try:
         db.session.execute(text("""
-            DO $$ 
+            DO $$
             BEGIN
                 IF NOT EXISTS (
-                    SELECT 1 FROM information_schema.columns 
+                    SELECT 1 FROM information_schema.columns
                     WHERE table_name = 'payment_plans' AND column_name = 'regions_allowed'
                 ) THEN
                     ALTER TABLE payment_plans ADD COLUMN regions_allowed INTEGER DEFAULT 1;
                 END IF;
-                
+
                 IF NOT EXISTS (
-                    SELECT 1 FROM information_schema.columns 
+                    SELECT 1 FROM information_schema.columns
                     WHERE table_name = 'payment_plans' AND column_name = 'crops_allowed'
                 ) THEN
                     ALTER TABLE payment_plans ADD COLUMN crops_allowed INTEGER DEFAULT 6;
@@ -113,7 +118,7 @@ def seed_payment_plans():
             "crops_allowed": 15,
         }
     ]
-    
+
     for plan_data in plans:
         existing = PaymentPlan.query.filter_by(code=plan_data["code"]).first()
         if existing:
@@ -121,7 +126,7 @@ def seed_payment_plans():
             existing.crops_allowed = plan_data["crops_allowed"]
         else:
             db.session.add(PaymentPlan(**plan_data))
-    
+
     db.session.commit()
 
 
@@ -155,12 +160,12 @@ def seed_licensed_packs():
             "price_ngn": 7000000,
         }
     ]
-    
+
     for pack_data in packs:
         existing = LicensedPack.query.filter_by(code=pack_data["code"]).first()
         if not existing:
             db.session.add(LicensedPack(**pack_data))
-    
+
     db.session.commit()
 
 
@@ -187,12 +192,212 @@ def seed_datasets():
             "description": "Reliability scores and trust metrics for agricultural market participants."
         }
     ]
-    
+
     for ds in datasets:
         existing = Dataset.query.filter_by(code=ds["code"]).first()
         if not existing:
             db.session.add(Dataset(**ds))
-    
+
+    db.session.commit()
+
+
+REFERENCE_REGIONS = [
+    {"code": "SW", "name": "South West"},
+    {"code": "SE", "name": "South East"},
+    {"code": "SS", "name": "South South"},
+    {"code": "NC", "name": "North Central"},
+    {"code": "NW", "name": "North West"},
+    {"code": "NE", "name": "North East"},
+]
+
+REFERENCE_CROPS = [
+    {"code": "ginger", "name": "Ginger"},
+    {"code": "sesame", "name": "Sesame"},
+    {"code": "soybeans", "name": "Soybeans"},
+]
+
+SENSITIVE_DOCUMENT_TYPE_NAMES = {
+    "National ID",
+    "NIN Confirmation",
+    "BVN Confirmation",
+    "Bank Account Confirmation",
+    "Tax Identification Number",
+    "CAC Certificate",
+    "Invoice Record",
+    "Delivery Note",
+    "Offtake Agreement",
+}
+
+DOCUMENT_TYPES_REQUIRING_EXPIRY = {
+    "NEPC Registration",
+    "Phytosanitary Certificate",
+    "Quality Inspection Certificate",
+    "Organic Certification",
+    "GlobalG.A.P. Certification",
+    "HACCP Certification",
+    "Warehouse Receipt",
+    "Offtake Agreement",
+}
+
+DOCUMENT_TYPES_REQUIRING_ISSUING_BODY = {
+    "CAC Certificate",
+    "Tax Identification Number",
+    "Cooperative Registration Certificate",
+    "Export Registration Certificate",
+    "NEPC Registration",
+    "Phytosanitary Certificate",
+    "Quality Inspection Certificate",
+    "Certificate of Origin",
+    "Organic Certification",
+    "GlobalG.A.P. Certification",
+    "HACCP Certification",
+    "Warehouse Receipt",
+    "Offtake Agreement",
+}
+
+DOCUMENT_TYPES_REQUIRING_REFERENCE_NUMBER = {
+    "National ID",
+    "NIN Confirmation",
+    "BVN Confirmation",
+    "CAC Certificate",
+    "Tax Identification Number",
+    "Cooperative Registration Certificate",
+    "Export Registration Certificate",
+    "NEPC Registration",
+    "Phytosanitary Certificate",
+    "Quality Inspection Certificate",
+    "Certificate of Origin",
+    "Organic Certification",
+    "GlobalG.A.P. Certification",
+    "HACCP Certification",
+    "Warehouse Receipt",
+    "Invoice Record",
+    "Delivery Note",
+    "Bank Account Confirmation",
+}
+
+DOCUMENT_TYPE_CATEGORIES = {
+    "National ID": "identity",
+    "NIN Confirmation": "identity",
+    "BVN Confirmation": "financial_identity",
+    "Bank Account Confirmation": "financial_identity",
+    "CAC Certificate": "business_registration",
+    "Tax Identification Number": "business_registration",
+    "Cooperative Registration Certificate": "business_registration",
+    "Export Registration Certificate": "export_compliance",
+    "NEPC Registration": "export_compliance",
+    "Phytosanitary Certificate": "quality_compliance",
+    "Quality Inspection Certificate": "quality_compliance",
+    "Certificate of Origin": "export_compliance",
+    "Organic Certification": "quality_compliance",
+    "GlobalG.A.P. Certification": "quality_compliance",
+    "HACCP Certification": "quality_compliance",
+    "Warehouse Receipt": "trade_document",
+    "Farm Location Evidence": "field_verification",
+    "Field Visit Report": "field_verification",
+    "Verification Checklist": "field_verification",
+    "Offtake Agreement": "trade_document",
+    "Invoice Record": "trade_document",
+    "Delivery Note": "trade_document",
+}
+
+DOCUMENT_TYPE_NAMES = [
+    "National ID",
+    "NIN Confirmation",
+    "BVN Confirmation",
+    "CAC Certificate",
+    "Tax Identification Number",
+    "Cooperative Registration Certificate",
+    "Export Registration Certificate",
+    "NEPC Registration",
+    "Phytosanitary Certificate",
+    "Quality Inspection Certificate",
+    "Certificate of Origin",
+    "Organic Certification",
+    "GlobalG.A.P. Certification",
+    "HACCP Certification",
+    "Warehouse Receipt",
+    "Farm Location Evidence",
+    "Field Visit Report",
+    "Verification Checklist",
+    "Offtake Agreement",
+    "Invoice Record",
+    "Delivery Note",
+    "Bank Account Confirmation",
+]
+
+
+def make_code(name):
+    return name.lower().replace(".", "").replace("&", "and").replace("/", " ").replace("-", " ").replace(" ", "_")
+
+
+def seed_reference_data():
+    for region_data in REFERENCE_REGIONS:
+        region = Region.query.filter_by(code=region_data["code"]).first()
+        if region:
+            region.name = region_data["name"]
+            region.country = "Nigeria"
+            region.active = True
+        else:
+            db.session.add(Region(**region_data))
+
+    for crop_data in REFERENCE_CROPS:
+        crop = Crop.query.filter_by(code=crop_data["code"]).first()
+        if crop:
+            crop.name = crop_data["name"]
+            crop.active = True
+        else:
+            db.session.add(Crop(**crop_data))
+
+    db.session.commit()
+
+
+def seed_document_types():
+    for name in DOCUMENT_TYPE_NAMES:
+        sensitive = name in SENSITIVE_DOCUMENT_TYPE_NAMES
+        code = make_code(name)
+        visibility = "hidden" if sensitive else "metadata_only"
+        category = DOCUMENT_TYPE_CATEGORIES.get(name, "general")
+        requires_expiry_date = name in DOCUMENT_TYPES_REQUIRING_EXPIRY
+        requires_issuing_body = name in DOCUMENT_TYPES_REQUIRING_ISSUING_BODY
+        requires_reference_number = name in DOCUMENT_TYPES_REQUIRING_REFERENCE_NUMBER
+        applies_to_actor_types = [
+            "farmer",
+            "aggregator",
+            "exporter",
+            "cooperative",
+            "processor",
+            "buyer",
+            "logistics_provider",
+        ]
+
+        document_type = DocumentType.query.filter_by(code=code).first()
+        if document_type:
+            document_type.name = name
+            document_type.category = category
+            document_type.sensitive = sensitive
+            document_type.applies_to_actor_types = applies_to_actor_types
+            document_type.requires_expiry_date = requires_expiry_date
+            document_type.requires_issuing_body = requires_issuing_body
+            document_type.requires_reference_number = requires_reference_number
+            document_type.default_visibility_level = visibility
+            document_type.default_verification_status = "unverified"
+            document_type.active = True
+        else:
+            db.session.add(DocumentType(
+                code=code,
+                name=name,
+                category=category,
+                sensitive=sensitive,
+                applies_to_actor_types=applies_to_actor_types,
+                requires_expiry_date=requires_expiry_date,
+                requires_issuing_body=requires_issuing_body,
+                requires_reference_number=requires_reference_number,
+                default_visibility_level=visibility,
+                default_verification_status="unverified",
+                active=True
+            ))
+
     db.session.commit()
 
 
@@ -202,6 +407,8 @@ with app.app_context():
     seed_payment_plans()
     seed_datasets()
     seed_licensed_packs()
+    seed_reference_data()
+    seed_document_types()
 
 
 if __name__ == '__main__':
