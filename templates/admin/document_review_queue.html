@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+
+{% block title %}Document Review Queue - FieldSight Africa{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="flex items-center justify-between mb-8">
+        <div>
+            <h1 class="text-3xl font-bold text-gray-900">Document Review Queue</h1>
+            <p class="text-gray-600 mt-1">Review partner-submitted actor documents before any future external publication workflow.</p>
+        </div>
+        <a href="{{ url_for('admin.dashboard') }}" class="bg-gray-100 text-gray-700 px-5 py-2 rounded-lg hover:bg-gray-200 transition">Admin Dashboard</a>
+    </div>
+
+    <form method="GET" class="bg-white rounded-xl shadow-sm border p-5 mb-6">
+        <div class="grid md:grid-cols-4 lg:grid-cols-7 gap-4">
+            <div>
+                <label for="review_status" class="block text-xs font-medium text-gray-500 uppercase mb-1">Review</label>
+                <select name="review_status" id="review_status" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                    <option value="">Needs attention</option>
+                    {% for status in review_statuses %}
+                    <option value="{{ status }}" {% if selected_review_status == status %}selected{% endif %}>{{ status|replace('_', ' ')|title }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label for="verification_status" class="block text-xs font-medium text-gray-500 uppercase mb-1">Verification</label>
+                <select name="verification_status" id="verification_status" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                    <option value="">Any</option>
+                    {% for status in verification_statuses %}
+                    <option value="{{ status }}" {% if selected_verification_status == status %}selected{% endif %}>{{ status|replace('_', ' ')|title }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label for="document_type_id" class="block text-xs font-medium text-gray-500 uppercase mb-1">Type</label>
+                <select name="document_type_id" id="document_type_id" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                    <option value="">Any</option>
+                    {% for document_type in document_types %}
+                    <option value="{{ document_type.id }}" {% if selected_document_type_id == document_type.id|string %}selected{% endif %}>{{ document_type.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label for="partner_organization_id" class="block text-xs font-medium text-gray-500 uppercase mb-1">Partner</label>
+                <select name="partner_organization_id" id="partner_organization_id" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                    <option value="">Any</option>
+                    {% for organization in partner_organizations %}
+                    <option value="{{ organization.id }}" {% if selected_partner_organization_id == organization.id|string %}selected{% endif %}>{{ organization.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label for="extraction_status" class="block text-xs font-medium text-gray-500 uppercase mb-1">Extraction</label>
+                <select name="extraction_status" id="extraction_status" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                    <option value="">Any</option>
+                    {% for status in extraction_statuses %}
+                    <option value="{{ status }}" {% if selected_extraction_status == status %}selected{% endif %}>{{ status|replace('_', ' ')|title }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label for="risk_flag" class="block text-xs font-medium text-gray-500 uppercase mb-1">Risk</label>
+                <select name="risk_flag" id="risk_flag" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                    <option value="">Any</option>
+                    {% for flag in risk_flags %}
+                    <option value="{{ flag }}" {% if selected_risk_flag == flag %}selected{% endif %}>{{ flag|replace('_', ' ')|title }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label for="consent_status" class="block text-xs font-medium text-gray-500 uppercase mb-1">Consent</label>
+                <select name="consent_status" id="consent_status" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                    <option value="">Any</option>
+                    {% for status, label in consent_statuses %}
+                    <option value="{{ status }}" {% if selected_consent_status == status %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+        <div class="mt-4 flex justify-end gap-3">
+            <a href="{{ url_for('admin.document_review_queue') }}" class="bg-white border border-gray-300 text-gray-700 px-5 py-2 rounded-lg hover:bg-gray-50 transition">Reset</a>
+            <button type="submit" class="bg-primary text-white px-5 py-2 rounded-lg hover:bg-secondary transition">Filter</button>
+        </div>
+    </form>
+
+    <div class="bg-white rounded-xl shadow-sm border overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="w-full">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Document</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actor</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Partner</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Review</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Consent</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Extraction</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Risk</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Expiry</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Updated</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Action</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y">
+                    {% for item in review_items %}
+                    {% set document = item.document %}
+                    <tr class="hover:bg-gray-50">
+                        <td class="px-5 py-4">
+                            <p class="font-medium text-sm text-gray-900">{{ document.title }}</p>
+                            <p class="text-xs text-gray-500">{{ document.document_type.name }}</p>
+                            {% if document.document_type.sensitive %}
+                            <p class="text-xs text-red-700 mt-1">Sensitive</p>
+                            {% endif %}
+                        </td>
+                        <td class="px-5 py-4 text-sm text-gray-700">{{ item.actor.name }}</td>
+                        <td class="px-5 py-4 text-sm text-gray-700">{{ item.partner_organization.name }}</td>
+                        <td class="px-5 py-4 text-sm">
+                            <p class="text-gray-900">{{ document.review_status|replace('_', ' ')|title }}</p>
+                            <p class="text-xs text-gray-500">{{ document.verification_status|replace('_', ' ')|title }}</p>
+                        </td>
+                        <td class="px-5 py-4 text-sm">
+                            {% if item.consent.consent_status == 'externally_shareable' %}
+                            <span class="px-3 py-1 bg-emerald-50 text-emerald-700 rounded-full text-xs font-medium">Allowed</span>
+                            {% elif item.consent.consent_status == 'external_blocked' %}
+                            <span class="px-3 py-1 bg-amber-50 text-amber-700 rounded-full text-xs font-medium">Blocked</span>
+                            {% else %}
+                            <span class="px-3 py-1 bg-red-50 text-red-700 rounded-full text-xs font-medium">Missing</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-5 py-4 text-sm text-gray-700">
+                            {{ item.extraction_run.status|replace('_', ' ')|title if item.extraction_run else 'Missing' }}
+                            <p class="text-xs text-gray-500">{{ item.mismatch_count }} mismatches</p>
+                        </td>
+                        <td class="px-5 py-4 text-sm text-gray-700">
+                            {{ item.risk_flag_count }}
+                            {% if item.risk_flags %}
+                            <p class="text-xs text-amber-700">{{ item.risk_flags|join(', ')|replace('_', ' ')|title }}</p>
+                            {% endif %}
+                        </td>
+                        <td class="px-5 py-4 text-sm text-gray-700">{{ item.expiry_readiness.status|replace('_', ' ')|title if item.expiry_readiness and item.expiry_readiness.status else 'Not Available' }}</td>
+                        <td class="px-5 py-4 text-sm text-gray-500">{{ document.updated_at.strftime('%Y-%m-%d') if document.updated_at else '' }}</td>
+                        <td class="px-5 py-4">
+                            <a href="{{ url_for('admin.document_review_detail', document_id=document.id) }}" class="text-primary hover:underline text-sm font-medium">Review</a>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="10" class="px-6 py-8 text-center text-gray-500">No documents match the current review filters.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
