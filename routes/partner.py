@@ -1,25 +1,35 @@
 """Partner data portal routes."""
 
+import hashlib
+import mimetypes
+import uuid
 from datetime import datetime
 from functools import wraps
+from pathlib import Path
 
-from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
+from flask import Blueprint, abort, current_app, flash, redirect, render_template, request, send_file, url_for
 from flask_login import current_user, login_required
+from werkzeug.utils import secure_filename
 
 from models import (
     ACTOR_TYPES,
     COMMON_STATUSES,
+    DOCUMENT_VISIBILITY_LEVELS,
     PARTNER_DATASET_TYPES,
     PARTNER_ROLES,
     ActorCertification,
     ActorContact,
     ActorConstraint,
+    ActorDocument,
+    ActorDocumentVersion,
     ActorExportProfile,
     ActorLocation,
     AuditLog,
     CertificationType,
     Commodity,
     Crop,
+    DocumentAccessLog,
+    DocumentType,
     LGA,
     MarketActor,
     Port,
@@ -40,6 +50,8 @@ partner_bp = Blueprint("partner", __name__, url_prefix="/partner")
 EDITOR_ROLES = ("partner_admin", "data_editor")
 SUBMITTER_ROLES = ("partner_admin", "data_reviewer")
 RESTRICTED_CONTACT_ROLES = ("partner_admin", "data_editor", "data_reviewer")
+DOCUMENT_DOWNLOAD_ROLES = ("partner_admin", "data_editor", "data_reviewer")
+ALLOWED_DOCUMENT_EXTENSIONS = {"pdf", "png", "jpg", "jpeg", "csv", "xls", "xlsx"}
 
 
 def get_partner_profile_for_user(user):
@@ -112,6 +124,10 @@ def can_submit_partner_batches(profile):
     return bool(profile and profile.partner_role in SUBMITTER_ROLES)
 
 
+def can_download_partner_documents(profile):
+    return bool(profile and profile.partner_role in DOCUMENT_DOWNLOAD_ROLES)
+
+
 def get_partner_actor_or_404(actor_id, profile):
     actor = MarketActor.query.filter_by(
         id=actor_id,
@@ -120,6 +136,21 @@ def get_partner_actor_or_404(actor_id, profile):
     if not actor:
         abort(404)
     return actor
+
+
+def get_partner_document_or_404(document_id, profile):
+    document = (
+        ActorDocument.query.join(MarketActor)
+        .filter(
+            ActorDocument.id == document_id,
+            ActorDocument.partner_organization_id == profile.partner_organization_id,
+            MarketActor.partner_organization_id == profile.partner_organization_id,
+        )
+        .first()
+    )
+    if not document:
+        abort(404)
+    return document
 
 
 def get_partner_batch_or_404(batch_id, profile):
@@ -207,6 +238,257 @@ def parse_optional_date(field_name, label, errors):
     except ValueError:
         errors.append(f"{label} must use YYYY-MM-DD format.")
         return None
+
+
+def private_upload_root():
+    configured_root = Path(current_app.config.get("PRIVATE_UPLOAD_ROOT", "private_uploads"))
+    if configured_root.is_absolute():
+        return configured_root
+    return Path(current_app.root_path) / configured_root
+
+
+def ensure_private_storage_path(path):
+    root = private_upload_root().resolve()
+    resolved_path = path.resolve()
+    try:
+        resolved_path.relative_to(root)
+    except ValueError:
+        abort(404)
+    return resolved_path
+
+
+def storage_path_for_db(file_path):
+    configured_root = Path(current_app.config.get("PRIVATE_UPLOAD_ROOT", "private_uploads"))
+    root = private_upload_root().resolve()
+    relative_path = file_path.resolve().relative_to(root)
+    if configured_root.is_absolute():
+        return str(file_path.resolve())
+    return (configured_root / relative_path).as_posix()
+
+
+def resolve_document_storage_path(storage_path):
+    path = Path(storage_path)
+    if not path.is_absolute():
+        path = Path(current_app.root_path) / path
+    return ensure_private_storage_path(path)
+
+
+def clean_original_filename(filename):
+    name = (filename or "").rsplit("\\", 1)[-1].rsplit("/", 1)[-1].strip()
+    return name
+
+
+def validate_document_upload(file_storage):
+    errors = []
+    if not file_storage or not file_storage.filename:
+        return None, ["Please choose a document file."]
+
+    original_filename = clean_original_filename(file_storage.filename)
+    safe_filename = secure_filename(original_filename)
+    extension = safe_filename.rsplit(".", 1)[-1].lower() if "." in safe_filename else ""
+    if extension not in ALLOWED_DOCUMENT_EXTENSIONS:
+        errors.append("Document file type is not allowed.")
+
+    content = file_storage.read()
+    file_storage.seek(0)
+    if not content:
+        errors.append("Document file cannot be empty.")
+
+    max_bytes = int(current_app.config.get("MAX_DOCUMENT_UPLOAD_MB", 10)) * 1024 * 1024
+    if len(content) > max_bytes:
+        errors.append(f"Document file must be {current_app.config.get('MAX_DOCUMENT_UPLOAD_MB', 10)} MB or smaller.")
+
+    if errors:
+        return None, errors
+
+    mime_type = file_storage.mimetype or mimetypes.guess_type(safe_filename)[0] or "application/octet-stream"
+    return {
+        "original_filename": original_filename,
+        "safe_filename": safe_filename,
+        "mime_type": mime_type,
+        "file_size": len(content),
+        "file_hash": hashlib.sha256(content).hexdigest(),
+        "content": content,
+    }, []
+
+
+def save_document_upload(actor, document, upload_data, version_number):
+    actor_token = secure_filename(actor.public_id or f"actor-{actor.id}")
+    folder = private_upload_root() / "actors" / actor_token / "documents" / f"document-{document.id}" / f"v{version_number}"
+    folder = ensure_private_storage_path(folder)
+    folder.mkdir(parents=True, exist_ok=True)
+
+    stored_filename = f"{uuid.uuid4().hex}_{upload_data['safe_filename']}"
+    file_path = ensure_private_storage_path(folder / stored_filename)
+    file_path.write_bytes(upload_data["content"])
+
+    return {
+        "original_filename": upload_data["original_filename"],
+        "stored_filename": stored_filename,
+        "storage_path": storage_path_for_db(file_path),
+        "mime_type": upload_data["mime_type"],
+        "file_size": upload_data["file_size"],
+        "file_hash": upload_data["file_hash"],
+    }
+
+
+def get_document_type_for_actor(document_type_id, actor, errors):
+    if not document_type_id:
+        errors.append("Document type is required.")
+        return None
+
+    document_type = DocumentType.query.filter_by(id=document_type_id, active=True).first()
+    if not document_type:
+        errors.append("Selected document type was not found.")
+        return None
+
+    applies_to = document_type.applies_to_actor_types or []
+    if applies_to and actor.actor_type not in applies_to:
+        errors.append("Selected document type does not apply to this actor type.")
+    return document_type
+
+
+def parse_document_form(actor):
+    errors = []
+    document_type_id = parse_optional_int("document_type_id", "Document type", errors)
+    document_type = get_document_type_for_actor(document_type_id, actor, errors)
+    title = clean_form_value("title")
+    description = clean_form_value("description")
+    reference_number = clean_form_value("document_reference_number")
+    issuing_body = clean_form_value("issuing_body")
+    issued_at = parse_optional_date("issued_at", "Issued date", errors)
+    expires_at = parse_optional_date("expires_at", "Expiry date", errors)
+    linked_crop_id = parse_optional_int("linked_crop_id", "Linked crop", errors)
+    linked_commodity_id = parse_optional_int("linked_commodity_id", "Linked commodity", errors)
+
+    if not title:
+        errors.append("Document title is required.")
+
+    if linked_crop_id:
+        get_optional_model(Crop, linked_crop_id, "linked crop", errors)
+    if linked_commodity_id:
+        get_optional_model(Commodity, linked_commodity_id, "linked commodity", errors)
+
+    if document_type:
+        if document_type.requires_reference_number and not reference_number:
+            errors.append("Reference number is required for this document type.")
+        if document_type.requires_issuing_body and not issuing_body:
+            errors.append("Issuing body is required for this document type.")
+        if document_type.requires_expiry_date and not expires_at:
+            errors.append("Expiry date is required for this document type.")
+
+    if issued_at and expires_at and expires_at < issued_at:
+        errors.append("Expiry date cannot be before issued date.")
+
+    default_visibility = document_type.default_visibility_level if document_type else "metadata_only"
+    subscriber_access_level = clean_form_value("subscriber_access_level") or default_visibility or "metadata_only"
+    if document_type and document_type.sensitive:
+        subscriber_access_level = "hidden"
+
+    if subscriber_access_level not in DOCUMENT_VISIBILITY_LEVELS:
+        errors.append("Please select a supported subscriber access level.")
+
+    return errors, {
+        "document_type": document_type,
+        "title": title,
+        "description": description or None,
+        "document_reference_number": reference_number or None,
+        "issuing_body": issuing_body or None,
+        "issued_at": issued_at,
+        "expires_at": expires_at,
+        "linked_crop_id": linked_crop_id,
+        "linked_commodity_id": linked_commodity_id,
+        "subscriber_access_level": subscriber_access_level,
+        "visibility_level": subscriber_access_level,
+    }
+
+
+def apply_document_metadata(document, values):
+    document.document_type_id = values["document_type"].id
+    document.title = values["title"]
+    document.description = values["description"]
+    document.document_reference_number = values["document_reference_number"]
+    document.issuing_body = values["issuing_body"]
+    document.issued_at = values["issued_at"]
+    document.expires_at = values["expires_at"]
+    document.linked_crop_id = values["linked_crop_id"]
+    document.linked_commodity_id = values["linked_commodity_id"]
+    document.subscriber_access_level = values["subscriber_access_level"]
+    document.visibility_level = values["visibility_level"]
+    if values["document_type"].default_verification_status:
+        document.verification_status = values["document_type"].default_verification_status
+
+
+def document_form_context(profile, actor=None, document=None):
+    document_types = DocumentType.query.filter_by(active=True).order_by(DocumentType.category, DocumentType.name).all()
+    if actor:
+        document_types = [
+            document_type for document_type in document_types
+            if not document_type.applies_to_actor_types or actor.actor_type in document_type.applies_to_actor_types
+        ]
+
+    return {
+        "profile": profile,
+        "organization": profile.partner_organization,
+        "actor": actor or document.market_actor,
+        "document": document,
+        "document_types": document_types,
+        "visibility_levels": DOCUMENT_VISIBILITY_LEVELS,
+        "crops": Crop.query.filter_by(active=True).order_by(Crop.name).all(),
+        "commodities": Commodity.query.filter_by(active=True).order_by(Commodity.name).all(),
+        "max_upload_mb": current_app.config.get("MAX_DOCUMENT_UPLOAD_MB", 10),
+        "allowed_extensions": sorted(ALLOWED_DOCUMENT_EXTENSIONS),
+        "can_edit": can_edit_partner_records(profile),
+        "can_download": can_download_partner_documents(profile),
+    }
+
+
+def current_document_version(document):
+    return ActorDocumentVersion.query.filter_by(
+        actor_document_id=document.id,
+        version_number=document.version_number,
+    ).first()
+
+
+def document_snapshot(document):
+    return {
+        "id": document.id,
+        "market_actor_id": document.market_actor_id,
+        "partner_organization_id": document.partner_organization_id,
+        "document_type_id": document.document_type_id,
+        "title": document.title,
+        "document_reference_number": document.document_reference_number,
+        "issuing_body": document.issuing_body,
+        "linked_crop_id": document.linked_crop_id,
+        "linked_commodity_id": document.linked_commodity_id,
+        "document_status": document.document_status,
+        "verification_status": document.verification_status,
+        "redaction_status": document.redaction_status,
+        "subscriber_access_level": document.subscriber_access_level,
+        "review_status": document.review_status,
+        "visibility_level": document.visibility_level,
+        "issued_at": iso_date(document.issued_at),
+        "expires_at": iso_date(document.expires_at),
+        "original_filename": document.original_filename,
+        "stored_filename": document.stored_filename,
+        "mime_type": document.mime_type,
+        "file_size": document.file_size,
+        "file_hash": document.file_hash,
+        "version_number": document.version_number,
+    }
+
+
+def add_document_access_log(document, access_type, version=None):
+    db.session.add(DocumentAccessLog(
+        actor_document_id=document.id,
+        actor_document_version_id=version.id if version else None,
+        user_id=current_user.id,
+        access_type=access_type,
+        access_channel="partner_portal",
+        visibility_level=document.visibility_level or document.subscriber_access_level or "metadata_only",
+        ip_address=request.headers.get("X-Forwarded-For", request.remote_addr),
+        user_agent=request.headers.get("User-Agent"),
+    ))
 
 
 def parse_actor_form(profile):
@@ -724,6 +1006,246 @@ def actor_detail(actor_id):
         quality_score=calculate_actor_quality_score(actor),
         can_edit=can_edit_partner_records(profile),
         show_restricted_contacts=can_view_restricted_contacts(profile),
+    )
+
+
+@partner_bp.route("/actors/<int:actor_id>/documents")
+@login_required
+@require_partner_user
+def actor_documents(actor_id):
+    profile = get_current_partner_profile()
+    actor = get_partner_actor_or_404(actor_id, profile)
+    documents = (
+        ActorDocument.query.filter_by(
+            market_actor_id=actor.id,
+            partner_organization_id=profile.partner_organization_id,
+        )
+        .order_by(ActorDocument.updated_at.desc())
+        .all()
+    )
+    return render_template(
+        "partner/documents.html",
+        profile=profile,
+        organization=profile.partner_organization,
+        actor=actor,
+        documents=documents,
+        can_edit=can_edit_partner_records(profile),
+        can_download=can_download_partner_documents(profile),
+    )
+
+
+@partner_bp.route("/actors/<int:actor_id>/documents/new", methods=["GET", "POST"])
+@login_required
+@require_partner_user
+@require_partner_role(*EDITOR_ROLES)
+def new_actor_document(actor_id):
+    profile = get_current_partner_profile()
+    actor = get_partner_actor_or_404(actor_id, profile)
+
+    if request.method == "POST":
+        errors, values = parse_document_form(actor)
+        upload_data, upload_errors = validate_document_upload(request.files.get("file"))
+        errors.extend(upload_errors)
+        if errors:
+            for error in errors:
+                flash(error, "error")
+            return render_template("partner/document_form.html", **document_form_context(profile, actor=actor))
+
+        document = ActorDocument(
+            market_actor_id=actor.id,
+            partner_organization_id=profile.partner_organization_id,
+            document_type_id=values["document_type"].id,
+            uploaded_by_user_id=current_user.id,
+            title=values["title"],
+            document_status="submitted",
+            review_status="pending",
+            redaction_status="not_redacted",
+            version_number=1,
+            is_current_version=True,
+        )
+        db.session.add(document)
+        db.session.flush()
+        apply_document_metadata(document, values)
+        file_metadata = save_document_upload(actor, document, upload_data, version_number=1)
+        for key, value in file_metadata.items():
+            setattr(document, key, value)
+
+        version = ActorDocumentVersion(
+            actor_document_id=document.id,
+            version_number=1,
+            storage_backend=current_app.config.get("DOCUMENT_STORAGE_BACKEND", "local_private"),
+            storage_path=document.storage_path,
+            original_filename=document.original_filename,
+            content_type=document.mime_type,
+            file_size_bytes=document.file_size,
+            checksum_sha256=document.file_hash,
+            uploaded_by_user_id=current_user.id,
+            document_status=document.document_status,
+        )
+        db.session.add(version)
+        db.session.flush()
+        add_audit_log(
+            "partner_document_created",
+            "actor_document",
+            document.id,
+            after_values=document_snapshot(document),
+            organization_id=profile.partner_organization_id,
+        )
+        db.session.commit()
+
+        flash("Document uploaded.", "success")
+        return redirect(url_for("partner.document_detail", document_id=document.id))
+
+    return render_template("partner/document_form.html", **document_form_context(profile, actor=actor))
+
+
+@partner_bp.route("/documents/<int:document_id>")
+@login_required
+@require_partner_user
+def document_detail(document_id):
+    profile = get_current_partner_profile()
+    document = get_partner_document_or_404(document_id, profile)
+    version = current_document_version(document)
+    add_document_access_log(document, "metadata_view", version=version)
+    db.session.commit()
+    return render_template(
+        "partner/document_detail.html",
+        profile=profile,
+        organization=profile.partner_organization,
+        document=document,
+        actor=document.market_actor,
+        current_version=version,
+        can_edit=can_edit_partner_records(profile),
+        can_download=can_download_partner_documents(profile),
+    )
+
+
+@partner_bp.route("/documents/<int:document_id>/edit", methods=["GET", "POST"])
+@login_required
+@require_partner_user
+@require_partner_role(*EDITOR_ROLES)
+def edit_document(document_id):
+    profile = get_current_partner_profile()
+    document = get_partner_document_or_404(document_id, profile)
+    actor = document.market_actor
+
+    if request.method == "POST":
+        errors, values = parse_document_form(actor)
+        if errors:
+            for error in errors:
+                flash(error, "error")
+            return render_template("partner/document_form.html", **document_form_context(profile, actor=actor, document=document))
+
+        before_values = document_snapshot(document)
+        apply_document_metadata(document, values)
+        db.session.flush()
+        after_values = document_snapshot(document)
+        add_audit_log(
+            "partner_document_metadata_updated",
+            "actor_document",
+            document.id,
+            before_values=before_values,
+            after_values=after_values,
+            organization_id=profile.partner_organization_id,
+        )
+        db.session.commit()
+
+        flash("Document metadata updated.", "success")
+        return redirect(url_for("partner.document_detail", document_id=document.id))
+
+    return render_template("partner/document_form.html", **document_form_context(profile, actor=actor, document=document))
+
+
+@partner_bp.route("/documents/<int:document_id>/versions/new", methods=["GET", "POST"])
+@login_required
+@require_partner_user
+@require_partner_role(*EDITOR_ROLES)
+def new_document_version(document_id):
+    profile = get_current_partner_profile()
+    document = get_partner_document_or_404(document_id, profile)
+    actor = document.market_actor
+
+    if request.method == "POST":
+        upload_data, errors = validate_document_upload(request.files.get("file"))
+        if errors:
+            for error in errors:
+                flash(error, "error")
+            return render_template("partner/document_version_form.html", **document_form_context(profile, actor=actor, document=document))
+
+        before_values = document_snapshot(document)
+        next_version_number = (document.version_number or 1) + 1
+        file_metadata = save_document_upload(actor, document, upload_data, version_number=next_version_number)
+        for key, value in file_metadata.items():
+            setattr(document, key, value)
+        document.version_number = next_version_number
+        document.uploaded_by_user_id = current_user.id
+        document.document_status = "submitted"
+        document.review_status = "pending"
+        document.is_current_version = True
+
+        version = ActorDocumentVersion(
+            actor_document_id=document.id,
+            version_number=next_version_number,
+            storage_backend=current_app.config.get("DOCUMENT_STORAGE_BACKEND", "local_private"),
+            storage_path=document.storage_path,
+            original_filename=document.original_filename,
+            content_type=document.mime_type,
+            file_size_bytes=document.file_size,
+            checksum_sha256=document.file_hash,
+            uploaded_by_user_id=current_user.id,
+            document_status=document.document_status,
+        )
+        db.session.add(version)
+        db.session.flush()
+        after_values = document_snapshot(document)
+        add_audit_log(
+            "partner_document_version_uploaded",
+            "actor_document",
+            document.id,
+            before_values=before_values,
+            after_values=after_values,
+            organization_id=profile.partner_organization_id,
+        )
+        db.session.commit()
+
+        flash("New document version uploaded.", "success")
+        return redirect(url_for("partner.document_detail", document_id=document.id))
+
+    return render_template("partner/document_version_form.html", **document_form_context(profile, actor=actor, document=document))
+
+
+@partner_bp.route("/documents/<int:document_id>/download")
+@login_required
+@require_partner_user
+def download_document(document_id):
+    profile = get_current_partner_profile()
+    document = get_partner_document_or_404(document_id, profile)
+    if not can_download_partner_documents(profile):
+        flash("Your partner role does not allow document downloads.", "error")
+        return redirect(url_for("partner.document_detail", document_id=document.id))
+
+    version = current_document_version(document)
+    storage_path = document.storage_path
+    download_name = document.original_filename or document.stored_filename or f"document-{document.id}"
+    if version and version.storage_path:
+        storage_path = version.storage_path
+        download_name = version.original_filename or download_name
+
+    if not storage_path:
+        abort(404)
+
+    file_path = resolve_document_storage_path(storage_path)
+    if not file_path.exists() or not file_path.is_file():
+        abort(404)
+
+    add_document_access_log(document, "download", version=version)
+    db.session.commit()
+
+    return send_file(
+        file_path,
+        as_attachment=True,
+        download_name=download_name,
+        mimetype=document.mime_type or (version.content_type if version else None),
     )
 
 

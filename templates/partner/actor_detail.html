@@ -10,9 +10,12 @@
             <h1 class="text-3xl font-bold text-gray-900 mt-3">{{ actor.name }}</h1>
             <p class="text-gray-600 mt-1">{{ actor.actor_type|replace('_', ' ')|title }} | {{ actor.public_id }}</p>
         </div>
-        {% if can_edit %}
-        <a href="{{ url_for('partner.edit_actor', actor_id=actor.id) }}" class="bg-primary text-white px-5 py-2 rounded-lg hover:bg-secondary transition">Edit</a>
-        {% endif %}
+        <div class="flex items-center gap-3">
+            <a href="{{ url_for('partner.actor_documents', actor_id=actor.id) }}" class="bg-white border border-primary text-primary px-5 py-2 rounded-lg hover:bg-gray-50 transition">Documents</a>
+            {% if can_edit %}
+            <a href="{{ url_for('partner.edit_actor', actor_id=actor.id) }}" class="bg-primary text-white px-5 py-2 rounded-lg hover:bg-secondary transition">Edit</a>
+            {% endif %}
+        </div>
     </div>
 
     <div class="bg-white rounded-xl shadow-sm border p-6 mb-6">

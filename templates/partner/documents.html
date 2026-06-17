@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+
+{% block title %}Actor Documents - FieldSight Africa{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="flex items-center justify-between mb-8">
+        <div>
+            <a href="{{ url_for('partner.actor_detail', actor_id=actor.id) }}" class="text-primary hover:underline text-sm">&larr; Back to Actor</a>
+            <h1 class="text-3xl font-bold text-gray-900 mt-3">Documents</h1>
+            <p class="text-gray-600 mt-1">{{ actor.name }} | {{ actor.public_id }}</p>
+        </div>
+        {% if can_edit %}
+        <a href="{{ url_for('partner.new_actor_document', actor_id=actor.id) }}" class="bg-primary text-white px-5 py-2 rounded-lg hover:bg-secondary transition">Upload Document</a>
+        {% endif %}
+    </div>
+
+    <div class="bg-white rounded-xl shadow-sm border overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="w-full">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Document</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Verification</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Access</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Version</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">File</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Updated</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y">
+                    {% for document in documents %}
+                    <tr class="hover:bg-gray-50">
+                        <td class="px-6 py-4">
+                            <a href="{{ url_for('partner.document_detail', document_id=document.id) }}" class="font-medium text-primary hover:underline">{{ document.title }}</a>
+                            <p class="text-xs text-gray-500">{{ document.original_filename or 'No file name' }}</p>
+                        </td>
+                        <td class="px-6 py-4 text-sm text-gray-700">
+                            {{ document.document_type.name }}
+                            {% if document.document_type.category %}
+                            <p class="text-xs text-gray-500">{{ document.document_type.category|replace('_', ' ')|title }}</p>
+                            {% endif %}
+                        </td>
+                        <td class="px-6 py-4 text-sm text-gray-700">{{ document.document_status|replace('_', ' ')|title }}</td>
+                        <td class="px-6 py-4 text-sm text-gray-700">{{ document.verification_status|replace('_', ' ')|title }}</td>
+                        <td class="px-6 py-4 text-sm text-gray-700">{{ document.subscriber_access_level|replace('_', ' ')|title }}</td>
+                        <td class="px-6 py-4 text-sm text-gray-700">v{{ document.version_number or 1 }}</td>
+                        <td class="px-6 py-4 text-sm text-gray-700">
+                            {{ document.mime_type or 'Unknown type' }}
+                            <p class="text-xs text-gray-500">{{ document.file_size or 0 }} bytes</p>
+                        </td>
+                        <td class="px-6 py-4 text-sm text-gray-500">{{ document.updated_at.strftime('%Y-%m-%d') if document.updated_at else '' }}</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="8" class="px-6 py-8 text-center text-gray-500">No documents uploaded yet</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

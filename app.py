@@ -22,6 +22,14 @@ load_dotenv()
 
 from models import db, User, PaymentPlan, Dataset, LicensedPack, Region, Crop, DocumentType, ReferenceOption
 
+
+def int_env(name, default):
+    try:
+        return int(os.environ.get(name, default))
+    except (TypeError, ValueError):
+        return default
+
+
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SESSION_SECRET', 'dev-secret-key')
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL')
@@ -32,6 +40,7 @@ app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
 }
 app.config['PRIVATE_UPLOAD_ROOT'] = os.environ.get('PRIVATE_UPLOAD_ROOT', 'private_uploads')
 app.config['DOCUMENT_STORAGE_BACKEND'] = os.environ.get('DOCUMENT_STORAGE_BACKEND', 'local_private')
+app.config['MAX_DOCUMENT_UPLOAD_MB'] = int_env('MAX_DOCUMENT_UPLOAD_MB', 10)
 app.config['S3_COMPATIBLE_ENDPOINT'] = os.environ.get('S3_COMPATIBLE_ENDPOINT')
 app.config['S3_BUCKET_NAME'] = os.environ.get('S3_BUCKET_NAME')
 app.config['S3_REGION'] = os.environ.get('S3_REGION')
