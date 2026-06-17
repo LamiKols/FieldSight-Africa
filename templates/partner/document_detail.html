@@ -21,6 +21,16 @@
         </div>
     </div>
 
+    {% if not active_consent %}
+    <div class="rounded-xl bg-amber-50 border border-amber-200 p-5 mb-6 text-sm text-amber-800">
+        No active actor consent is recorded. This document can be stored and reviewed internally, but it should not be externally shared.
+    </div>
+    {% elif not document_shareable %}
+    <div class="rounded-xl bg-amber-50 border border-amber-200 p-5 mb-6 text-sm text-amber-800">
+        Active consent exists, but it does not currently allow this document category for subscriber sharing.
+    </div>
+    {% endif %}
+
     <div class="grid lg:grid-cols-2 gap-6">
         <div class="bg-white rounded-xl shadow-sm border p-6">
             <h2 class="text-xl font-semibold text-gray-900 mb-4">Document Metadata</h2>
@@ -50,6 +60,8 @@
                 <div class="flex justify-between gap-4"><dt class="text-gray-500">Review</dt><dd class="text-gray-900 text-right">{{ document.review_status|replace('_', ' ')|title }}</dd></div>
                 <div class="flex justify-between gap-4"><dt class="text-gray-500">Redaction</dt><dd class="text-gray-900 text-right">{{ document.redaction_status|replace('_', ' ')|title }}</dd></div>
                 <div class="flex justify-between gap-4"><dt class="text-gray-500">Subscriber Access</dt><dd class="text-gray-900 text-right">{{ document.subscriber_access_level|replace('_', ' ')|title }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Consent Category</dt><dd class="text-gray-900 text-right">{{ document_consent_category|replace('_', ' ')|title }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Consent Allows Sharing</dt><dd class="text-gray-900 text-right">{{ 'Yes' if document_shareable else 'No' }}</dd></div>
                 <div class="flex justify-between gap-4"><dt class="text-gray-500">Sensitive Type</dt><dd class="text-gray-900 text-right">{{ 'Yes' if document.document_type.sensitive else 'No' }}</dd></div>
                 <div class="flex justify-between gap-4"><dt class="text-gray-500">Reviewed</dt><dd class="text-gray-900 text-right">{{ document.reviewed_at.strftime('%Y-%m-%d') if document.reviewed_at else 'Not reviewed' }}</dd></div>
             </dl>
