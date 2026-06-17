@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+
+{% block title %}Reference Options - FieldSight Africa{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="flex items-center justify-between mb-8">
+        <div>
+            <a href="{{ url_for('admin.dashboard') }}" class="text-primary hover:underline text-sm">&larr; Back to Admin Dashboard</a>
+            <h1 class="text-3xl font-bold text-gray-900 mt-3">Reference Options</h1>
+            <p class="text-gray-600 mt-1">Manage controlled dropdown values used by partner actor records.</p>
+        </div>
+        <a href="{{ url_for('admin.new_reference_option') }}" class="bg-primary text-white px-5 py-2 rounded-lg hover:bg-secondary transition">New Option</a>
+    </div>
+
+    <form method="GET" class="bg-white rounded-xl shadow-sm border p-6 mb-6">
+        <label for="category" class="block text-sm font-medium text-gray-700 mb-1">Filter Category</label>
+        <div class="flex gap-3">
+            <select name="category" id="category"
+                    class="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-primary focus:border-transparent">
+                <option value="">All categories</option>
+                {% for category in categories %}
+                <option value="{{ category }}" {% if selected_category == category %}selected{% endif %}>{{ category|replace('_', ' ')|title }}</option>
+                {% endfor %}
+            </select>
+            <button type="submit" class="bg-primary text-white px-5 py-2 rounded-lg hover:bg-secondary transition">Filter</button>
+        </div>
+    </form>
+
+    <div class="bg-white rounded-xl shadow-sm border overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="w-full">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Category</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Code</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Label</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Sort</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Flags</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Action</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y">
+                    {% for option in options %}
+                    <tr class="hover:bg-gray-50">
+                        <td class="px-6 py-4 text-sm text-gray-700">{{ option.category|replace('_', ' ')|title }}</td>
+                        <td class="px-6 py-4 text-sm text-gray-700">{{ option.code }}</td>
+                        <td class="px-6 py-4 text-sm text-gray-900">
+                            <span class="font-medium">{{ option.label }}</span>
+                            {% if option.description %}
+                            <p class="text-xs text-gray-500">{{ option.description }}</p>
+                            {% endif %}
+                        </td>
+                        <td class="px-6 py-4 text-sm text-gray-700">{{ option.sort_order }}</td>
+                        <td class="px-6 py-4 text-sm text-gray-700">
+                            {% if option.active %}
+                            <span class="px-2 py-1 rounded bg-green-100 text-green-700 text-xs">Active</span>
+                            {% else %}
+                            <span class="px-2 py-1 rounded bg-gray-100 text-gray-600 text-xs">Inactive</span>
+                            {% endif %}
+                            {% if option.is_default %}
+                            <span class="px-2 py-1 rounded bg-amber-100 text-amber-700 text-xs">Default</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-6 py-4 text-sm">
+                            <a href="{{ url_for('admin.edit_reference_option', option_id=option.id) }}" class="text-primary hover:underline">Edit</a>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="6" class="px-6 py-8 text-center text-gray-500">No reference options found</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

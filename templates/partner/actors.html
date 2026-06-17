@@ -26,6 +26,7 @@
                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">State / LGA</th>
                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Registration</th>
                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Quality</th>
                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Updated</th>
                     </tr>
                 </thead>
@@ -53,11 +54,18 @@
                         </td>
                         <td class="px-6 py-4 text-sm text-gray-700">{{ actor.registration_status or 'Not set' }}</td>
                         <td class="px-6 py-4 text-sm text-gray-700">{{ actor.status|title }}</td>
+                        <td class="px-6 py-4 text-sm text-gray-700">
+                            {% set quality = quality_scores[actor.id] %}
+                            <div class="w-28 bg-gray-100 rounded-full h-2 mb-2">
+                                <div class="h-2 rounded-full {% if quality.grade == 'complete' %}bg-green-600{% elif quality.grade == 'high' %}bg-green-500{% elif quality.grade == 'medium' %}bg-amber-500{% else %}bg-red-500{% endif %}" style="width: {{ quality.score }}%"></div>
+                            </div>
+                            <span class="text-xs font-medium">{{ quality.score }}% {{ quality.grade|title }}</span>
+                        </td>
                         <td class="px-6 py-4 text-sm text-gray-500">{{ actor.updated_at.strftime('%Y-%m-%d') if actor.updated_at else '' }}</td>
                     </tr>
                     {% else %}
                     <tr>
-                        <td colspan="7" class="px-6 py-8 text-center text-gray-500">No actor records yet</td>
+                        <td colspan="8" class="px-6 py-8 text-center text-gray-500">No actor records yet</td>
                     </tr>
                     {% endfor %}
                 </tbody>

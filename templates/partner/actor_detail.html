@@ -15,6 +15,39 @@
         {% endif %}
     </div>
 
+    <div class="bg-white rounded-xl shadow-sm border p-6 mb-6">
+        <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div>
+                <h2 class="text-xl font-semibold text-gray-900">Data Quality</h2>
+                <p class="text-gray-600 text-sm mt-1">{{ quality_score.grade|title }} completeness based on current actor data.</p>
+            </div>
+            <div class="md:w-80">
+                <div class="flex items-center justify-between text-sm mb-2">
+                    <span class="font-medium text-gray-700">{{ quality_score.score }}%</span>
+                    <span class="text-gray-500">{{ quality_score.grade|title }}</span>
+                </div>
+                <div class="w-full bg-gray-100 rounded-full h-3">
+                    <div class="h-3 rounded-full {% if quality_score.grade == 'complete' %}bg-green-600{% elif quality_score.grade == 'high' %}bg-green-500{% elif quality_score.grade == 'medium' %}bg-amber-500{% else %}bg-red-500{% endif %}" style="width: {{ quality_score.score }}%"></div>
+                </div>
+            </div>
+        </div>
+
+        {% if quality_score.missing_sections %}
+        <div class="mt-5">
+            <h3 class="text-sm font-medium text-gray-700 mb-2">Missing Sections</h3>
+            <div class="flex flex-wrap gap-2">
+                {% for section in quality_score.missing_sections %}
+                <span class="px-3 py-1 rounded-full bg-amber-100 text-amber-800 text-sm">Missing {{ section|lower }}</span>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        {% if quality_score.deferred_sections %}
+        <p class="text-xs text-gray-500 mt-4">{{ quality_score.deferred_sections|join(', ') }} deferred until Phase 3.</p>
+        {% endif %}
+    </div>
+
     <div class="grid lg:grid-cols-2 gap-6">
         <div class="bg-white rounded-xl shadow-sm border p-6">
             <h2 class="text-xl font-semibold text-gray-900 mb-4">Actor Details</h2>
@@ -24,6 +57,8 @@
                 <div class="flex justify-between gap-4"><dt class="text-gray-500">Registration Status</dt><dd class="text-gray-900 text-right">{{ actor.registration_status or 'Not set' }}</dd></div>
                 <div class="flex justify-between gap-4"><dt class="text-gray-500">Registration Date</dt><dd class="text-gray-900 text-right">{{ actor.date_of_registration.strftime('%Y-%m-%d') if actor.date_of_registration else 'Not set' }}</dd></div>
                 <div class="flex justify-between gap-4"><dt class="text-gray-500">Status</dt><dd class="text-gray-900 text-right">{{ actor.status|title }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Source Type</dt><dd class="text-gray-900 text-right">{{ actor.source_reference_type|replace('_', ' ')|title if actor.source_reference_type else 'Not set' }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Source Reference</dt><dd class="text-gray-900 text-right">{{ actor.source_reference or 'Not set' }}</dd></div>
             </dl>
         </div>
 
