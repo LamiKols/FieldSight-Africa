@@ -12,6 +12,7 @@ PRODUCT TYPES:
 
 from datetime import datetime
 import hashlib
+import uuid
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -472,10 +473,13 @@ class MarketActor(TimestampMixin, db.Model):
     __tablename__ = 'market_actors'
 
     id = db.Column(db.Integer, primary_key=True)
+    public_id = db.Column(db.String(36), unique=True, nullable=False, default=lambda: str(uuid.uuid4()))
     partner_organization_id = db.Column(db.Integer, db.ForeignKey('partner_organizations.id'), nullable=False)
     created_by_user_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+    updated_by_id = db.Column(db.Integer, db.ForeignKey('users.id'))
     actor_type = db.Column(db.String(50), nullable=False)
     name = db.Column(db.String(180), nullable=False)
+    crop_id = db.Column(db.Integer, db.ForeignKey('crops.id'))
     commodity_id = db.Column(db.Integer, db.ForeignKey('commodities.id'))
     commodity_category = db.Column(db.String(120))
     registration_status = db.Column(db.String(80))
@@ -483,8 +487,11 @@ class MarketActor(TimestampMixin, db.Model):
     status = db.Column(db.String(20), default='active')
     source_reference = db.Column(db.String(120))
     metadata_json = db.Column(db.JSON)
+    archived_at = db.Column(db.DateTime)
 
-    created_by_user = db.relationship('User', backref='created_market_actors')
+    created_by_user = db.relationship('User', foreign_keys=[created_by_user_id], backref='created_market_actors')
+    updated_by_user = db.relationship('User', foreign_keys=[updated_by_id], backref='updated_market_actors')
+    crop = db.relationship('Crop', backref='market_actors')
     commodity = db.relationship('Commodity', backref='market_actors')
     location = db.relationship('ActorLocation', backref='market_actor', uselist=False)
     contacts = db.relationship('ActorContact', backref='market_actor', lazy=True)
@@ -499,6 +506,8 @@ class ActorLocation(TimestampMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     market_actor_id = db.Column(db.Integer, db.ForeignKey('market_actors.id'), nullable=False)
     location = db.Column(db.String(255))
+    location_text = db.Column(db.String(255))
+    region_id = db.Column(db.Integer, db.ForeignKey('regions.id'))
     state_id = db.Column(db.Integer, db.ForeignKey('states.id'))
     state_name = db.Column(db.String(100))
     lga_id = db.Column(db.Integer, db.ForeignKey('lgas.id'))
@@ -506,7 +515,9 @@ class ActorLocation(TimestampMixin, db.Model):
     country = db.Column(db.String(80), default='Nigeria')
     latitude = db.Column(db.Float)
     longitude = db.Column(db.Float)
+    is_primary = db.Column(db.Boolean, default=True)
 
+    region = db.relationship('Region', backref='actor_locations')
     state = db.relationship('State', backref='actor_locations')
     lga = db.relationship('LGA', backref='actor_locations')
 
@@ -516,11 +527,13 @@ class ActorContact(TimestampMixin, db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     market_actor_id = db.Column(db.Integer, db.ForeignKey('market_actors.id'), nullable=False)
+    contact_role = db.Column(db.String(80))
     contact_name = db.Column(db.String(120))
     phone = db.Column(db.String(50))
     email = db.Column(db.String(120))
     restricted = db.Column(db.Boolean, default=True)
     visibility_level = db.Column(db.String(50), default='hidden')
+    is_primary = db.Column(db.Boolean, default=True)
     notes = db.Column(db.Text)
 
 
@@ -533,6 +546,7 @@ class ActorExportProfile(TimestampMixin, db.Model):
     trade_destination_id = db.Column(db.Integer, db.ForeignKey('trade_destinations.id'))
     trade_destination_name = db.Column(db.String(120))
     export_capacity = db.Column(db.String(120))
+    export_capacity_unit = db.Column(db.String(50))
     port_id = db.Column(db.Integer, db.ForeignKey('ports.id'))
     port_of_exit = db.Column(db.String(120))
     notes = db.Column(db.Text)
@@ -549,7 +563,10 @@ class ActorCertification(TimestampMixin, db.Model):
     certification_type_id = db.Column(db.Integer, db.ForeignKey('certification_types.id'))
     certification_name = db.Column(db.String(150))
     certificate_number = db.Column(db.String(120))
+    reference_number = db.Column(db.String(120))
+    issuing_body = db.Column(db.String(180))
     verification_status = db.Column(db.String(50), default='unverified')
+    status = db.Column(db.String(50), default='active')
     issued_at = db.Column(db.Date)
     expires_at = db.Column(db.Date)
     notes = db.Column(db.Text)
@@ -562,6 +579,7 @@ class ActorConstraint(TimestampMixin, db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     market_actor_id = db.Column(db.Integer, db.ForeignKey('market_actors.id'), nullable=False)
+    constraint_category = db.Column(db.String(120))
     constraint_text = db.Column(db.Text, nullable=False)
     severity = db.Column(db.String(50))
     status = db.Column(db.String(50), default='active')
@@ -572,16 +590,22 @@ class PartnerUpdateBatch(TimestampMixin, db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     partner_organization_id = db.Column(db.Integer, db.ForeignKey('partner_organizations.id'), nullable=False)
+    title = db.Column(db.String(180))
     submitted_by_user_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+    reviewed_by_user_id = db.Column(db.Integer, db.ForeignKey('users.id'))
     dataset_type = db.Column(db.String(80), nullable=False)
     reporting_month = db.Column(db.String(7))
     status = db.Column(db.String(50), default='draft')
     notes = db.Column(db.Text)
+    review_comments = db.Column(db.Text)
     submitted_at = db.Column(db.DateTime)
+    reviewed_at = db.Column(db.DateTime)
     approved_at = db.Column(db.DateTime)
+    published_at = db.Column(db.DateTime)
     published_dataset_month_id = db.Column(db.Integer, db.ForeignKey('dataset_months.id'))
 
-    submitted_by_user = db.relationship('User', backref='submitted_partner_batches')
+    submitted_by_user = db.relationship('User', foreign_keys=[submitted_by_user_id], backref='submitted_partner_batches')
+    reviewed_by_user = db.relationship('User', foreign_keys=[reviewed_by_user_id], backref='reviewed_partner_batches')
     published_dataset_month = db.relationship('DatasetMonth', backref='partner_update_batches')
     record_changes = db.relationship('PartnerRecordChange', backref='partner_update_batch', lazy=True)
     reviews = db.relationship('PartnerSubmissionReview', backref='partner_update_batch', lazy=True)
@@ -592,12 +616,17 @@ class PartnerRecordChange(TimestampMixin, db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     partner_update_batch_id = db.Column(db.Integer, db.ForeignKey('partner_update_batches.id'), nullable=False)
+    market_actor_id = db.Column(db.Integer, db.ForeignKey('market_actors.id'))
+    created_by_user_id = db.Column(db.Integer, db.ForeignKey('users.id'))
     entity_type = db.Column(db.String(80), nullable=False)
     entity_id = db.Column(db.Integer)
     change_type = db.Column(db.String(50), nullable=False)
     before_values = db.Column(db.JSON)
     after_values = db.Column(db.JSON)
     status = db.Column(db.String(50), default='draft')
+
+    market_actor = db.relationship('MarketActor', backref='partner_record_changes')
+    created_by_user = db.relationship('User', backref='created_partner_record_changes')
 
 
 class PartnerSubmissionReview(TimestampMixin, db.Model):
@@ -619,8 +648,13 @@ class DocumentType(TimestampMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     code = db.Column(db.String(80), unique=True, nullable=False)
     name = db.Column(db.String(180), unique=True, nullable=False)
+    category = db.Column(db.String(100))
     description = db.Column(db.Text)
     sensitive = db.Column(db.Boolean, default=False)
+    applies_to_actor_types = db.Column(db.JSON, default=list)
+    requires_expiry_date = db.Column(db.Boolean, default=False)
+    requires_issuing_body = db.Column(db.Boolean, default=False)
+    requires_reference_number = db.Column(db.Boolean, default=False)
     default_visibility_level = db.Column(db.String(50), default='metadata_only')
     default_verification_status = db.Column(db.String(50), default='unverified')
     active = db.Column(db.Boolean, default=True)
@@ -635,17 +669,41 @@ class ActorDocument(TimestampMixin, db.Model):
     market_actor_id = db.Column(db.Integer, db.ForeignKey('market_actors.id'), nullable=False)
     partner_organization_id = db.Column(db.Integer, db.ForeignKey('partner_organizations.id'), nullable=False)
     document_type_id = db.Column(db.Integer, db.ForeignKey('document_types.id'), nullable=False)
+    uploaded_by_user_id = db.Column(db.Integer, db.ForeignKey('users.id'))
     title = db.Column(db.String(180), nullable=False)
     description = db.Column(db.Text)
+    original_filename = db.Column(db.String(255))
+    stored_filename = db.Column(db.String(255))
+    storage_path = db.Column(db.String(500))
+    mime_type = db.Column(db.String(120))
+    file_size = db.Column(db.Integer)
+    file_hash = db.Column(db.String(64))
+    version_number = db.Column(db.Integer, default=1)
+    document_reference_number = db.Column(db.String(120))
+    issuing_body = db.Column(db.String(180))
+    linked_crop_id = db.Column(db.Integer, db.ForeignKey('crops.id'))
+    linked_commodity_id = db.Column(db.Integer, db.ForeignKey('commodities.id'))
     document_status = db.Column(db.String(50), default='draft')
     verification_status = db.Column(db.String(50), default='unverified')
+    redaction_status = db.Column(db.String(50), default='not_redacted')
+    subscriber_access_level = db.Column(db.String(50), default='metadata_only')
+    review_status = db.Column(db.String(50), default='pending')
+    reviewed_by_user_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+    reviewed_at = db.Column(db.DateTime)
+    review_comments = db.Column(db.Text)
     visibility_level = db.Column(db.String(50), default='metadata_only')
     issued_at = db.Column(db.Date)
     expires_at = db.Column(db.Date)
+    is_current_version = db.Column(db.Boolean, default=True)
+    archived_at = db.Column(db.DateTime)
     metadata_json = db.Column(db.JSON)
 
     market_actor = db.relationship('MarketActor', backref='documents')
     partner_organization = db.relationship('PartnerOrganization', backref='documents')
+    uploaded_by_user = db.relationship('User', foreign_keys=[uploaded_by_user_id], backref='uploaded_actor_documents')
+    reviewed_by_user = db.relationship('User', foreign_keys=[reviewed_by_user_id], backref='reviewed_actor_documents')
+    linked_crop = db.relationship('Crop', backref='actor_documents')
+    linked_commodity = db.relationship('Commodity', backref='actor_documents')
     versions = db.relationship('ActorDocumentVersion', backref='actor_document', lazy=True)
 
 
@@ -695,7 +753,10 @@ class DocumentAccessLog(db.Model):
     actor_document_id = db.Column(db.Integer, db.ForeignKey('actor_documents.id'), nullable=False)
     actor_document_version_id = db.Column(db.Integer, db.ForeignKey('actor_document_versions.id'))
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+    api_client_id = db.Column(db.Integer, db.ForeignKey('api_clients.id'))
     access_type = db.Column(db.String(80), nullable=False)
+    access_channel = db.Column(db.String(80))
+    subscriber_organization_name = db.Column(db.String(180))
     visibility_level = db.Column(db.String(50), nullable=False)
     ip_address = db.Column(db.String(80))
     user_agent = db.Column(db.String(255))
@@ -704,6 +765,7 @@ class DocumentAccessLog(db.Model):
     actor_document = db.relationship('ActorDocument', backref='access_logs')
     actor_document_version = db.relationship('ActorDocumentVersion', backref='access_logs')
     user = db.relationship('User', backref='document_access_logs')
+    api_client = db.relationship('ApiClient', backref='document_access_logs')
 
 
 class DocumentEntitlement(TimestampMixin, db.Model):
@@ -773,8 +835,13 @@ class ApiUsageEvent(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     api_client_id = db.Column(db.Integer, db.ForeignKey('api_clients.id'), nullable=False)
     api_key_id = db.Column(db.Integer, db.ForeignKey('api_keys.id'))
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'))
     endpoint = db.Column(db.String(255), nullable=False)
     method = db.Column(db.String(10), nullable=False)
+    dataset_type = db.Column(db.String(80))
+    snapshot_month = db.Column(db.String(7))
+    filters_json = db.Column(db.JSON)
+    row_count = db.Column(db.Integer)
     status_code = db.Column(db.Integer)
     units = db.Column(db.Integer, default=1)
     ip_address = db.Column(db.String(80))
@@ -784,6 +851,7 @@ class ApiUsageEvent(db.Model):
 
     api_client = db.relationship('ApiClient', backref='usage_events')
     api_key = db.relationship('ApiKey', backref='usage_events')
+    user = db.relationship('User', backref='api_usage_events')
 
 
 class AuditLog(db.Model):

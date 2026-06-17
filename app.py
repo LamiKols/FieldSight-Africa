@@ -228,6 +228,79 @@ SENSITIVE_DOCUMENT_TYPE_NAMES = {
     "Offtake Agreement",
 }
 
+DOCUMENT_TYPES_REQUIRING_EXPIRY = {
+    "NEPC Registration",
+    "Phytosanitary Certificate",
+    "Quality Inspection Certificate",
+    "Organic Certification",
+    "GlobalG.A.P. Certification",
+    "HACCP Certification",
+    "Warehouse Receipt",
+    "Offtake Agreement",
+}
+
+DOCUMENT_TYPES_REQUIRING_ISSUING_BODY = {
+    "CAC Certificate",
+    "Tax Identification Number",
+    "Cooperative Registration Certificate",
+    "Export Registration Certificate",
+    "NEPC Registration",
+    "Phytosanitary Certificate",
+    "Quality Inspection Certificate",
+    "Certificate of Origin",
+    "Organic Certification",
+    "GlobalG.A.P. Certification",
+    "HACCP Certification",
+    "Warehouse Receipt",
+    "Offtake Agreement",
+}
+
+DOCUMENT_TYPES_REQUIRING_REFERENCE_NUMBER = {
+    "National ID",
+    "NIN Confirmation",
+    "BVN Confirmation",
+    "CAC Certificate",
+    "Tax Identification Number",
+    "Cooperative Registration Certificate",
+    "Export Registration Certificate",
+    "NEPC Registration",
+    "Phytosanitary Certificate",
+    "Quality Inspection Certificate",
+    "Certificate of Origin",
+    "Organic Certification",
+    "GlobalG.A.P. Certification",
+    "HACCP Certification",
+    "Warehouse Receipt",
+    "Invoice Record",
+    "Delivery Note",
+    "Bank Account Confirmation",
+}
+
+DOCUMENT_TYPE_CATEGORIES = {
+    "National ID": "identity",
+    "NIN Confirmation": "identity",
+    "BVN Confirmation": "financial_identity",
+    "Bank Account Confirmation": "financial_identity",
+    "CAC Certificate": "business_registration",
+    "Tax Identification Number": "business_registration",
+    "Cooperative Registration Certificate": "business_registration",
+    "Export Registration Certificate": "export_compliance",
+    "NEPC Registration": "export_compliance",
+    "Phytosanitary Certificate": "quality_compliance",
+    "Quality Inspection Certificate": "quality_compliance",
+    "Certificate of Origin": "export_compliance",
+    "Organic Certification": "quality_compliance",
+    "GlobalG.A.P. Certification": "quality_compliance",
+    "HACCP Certification": "quality_compliance",
+    "Warehouse Receipt": "trade_document",
+    "Farm Location Evidence": "field_verification",
+    "Field Visit Report": "field_verification",
+    "Verification Checklist": "field_verification",
+    "Offtake Agreement": "trade_document",
+    "Invoice Record": "trade_document",
+    "Delivery Note": "trade_document",
+}
+
 DOCUMENT_TYPE_NAMES = [
     "National ID",
     "NIN Confirmation",
@@ -284,11 +357,29 @@ def seed_document_types():
         sensitive = name in SENSITIVE_DOCUMENT_TYPE_NAMES
         code = make_code(name)
         visibility = "hidden" if sensitive else "metadata_only"
+        category = DOCUMENT_TYPE_CATEGORIES.get(name, "general")
+        requires_expiry_date = name in DOCUMENT_TYPES_REQUIRING_EXPIRY
+        requires_issuing_body = name in DOCUMENT_TYPES_REQUIRING_ISSUING_BODY
+        requires_reference_number = name in DOCUMENT_TYPES_REQUIRING_REFERENCE_NUMBER
+        applies_to_actor_types = [
+            "farmer",
+            "aggregator",
+            "exporter",
+            "cooperative",
+            "processor",
+            "buyer",
+            "logistics_provider",
+        ]
 
         document_type = DocumentType.query.filter_by(code=code).first()
         if document_type:
             document_type.name = name
+            document_type.category = category
             document_type.sensitive = sensitive
+            document_type.applies_to_actor_types = applies_to_actor_types
+            document_type.requires_expiry_date = requires_expiry_date
+            document_type.requires_issuing_body = requires_issuing_body
+            document_type.requires_reference_number = requires_reference_number
             document_type.default_visibility_level = visibility
             document_type.default_verification_status = "unverified"
             document_type.active = True
@@ -296,7 +387,12 @@ def seed_document_types():
             db.session.add(DocumentType(
                 code=code,
                 name=name,
+                category=category,
                 sensitive=sensitive,
+                applies_to_actor_types=applies_to_actor_types,
+                requires_expiry_date=requires_expiry_date,
+                requires_issuing_body=requires_issuing_body,
+                requires_reference_number=requires_reference_number,
                 default_visibility_level=visibility,
                 default_verification_status="unverified",
                 active=True
