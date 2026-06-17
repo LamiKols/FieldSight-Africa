@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+
+{% block title %}{{ document.title }} - FieldSight Africa{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="flex items-center justify-between mb-8">
+        <div>
+            <a href="{{ url_for('partner.actor_documents', actor_id=actor.id) }}" class="text-primary hover:underline text-sm">&larr; Back to Documents</a>
+            <h1 class="text-3xl font-bold text-gray-900 mt-3">{{ document.title }}</h1>
+            <p class="text-gray-600 mt-1">{{ actor.name }} | v{{ document.version_number or 1 }}</p>
+        </div>
+        <div class="flex items-center gap-3">
+            {% if can_download %}
+            <a href="{{ url_for('partner.download_document', document_id=document.id) }}" class="bg-primary text-white px-5 py-2 rounded-lg hover:bg-secondary transition">Download</a>
+            {% endif %}
+            {% if can_edit %}
+            <a href="{{ url_for('partner.new_document_version', document_id=document.id) }}" class="bg-white border border-primary text-primary px-5 py-2 rounded-lg hover:bg-gray-50 transition">New Version</a>
+            <a href="{{ url_for('partner.edit_document', document_id=document.id) }}" class="bg-gray-100 text-gray-700 px-5 py-2 rounded-lg hover:bg-gray-200 transition">Edit</a>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="grid lg:grid-cols-2 gap-6">
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <h2 class="text-xl font-semibold text-gray-900 mb-4">Document Metadata</h2>
+            <dl class="space-y-3 text-sm">
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Type</dt><dd class="text-gray-900 text-right">{{ document.document_type.name }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Category</dt><dd class="text-gray-900 text-right">{{ document.document_type.category|replace('_', ' ')|title if document.document_type.category else 'Not set' }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Reference</dt><dd class="text-gray-900 text-right">{{ document.document_reference_number or 'Not set' }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Issuing Body</dt><dd class="text-gray-900 text-right">{{ document.issuing_body or 'Not set' }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Issued</dt><dd class="text-gray-900 text-right">{{ document.issued_at.strftime('%Y-%m-%d') if document.issued_at else 'Not set' }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Expires</dt><dd class="text-gray-900 text-right">{{ document.expires_at.strftime('%Y-%m-%d') if document.expires_at else 'Not set' }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Linked Crop</dt><dd class="text-gray-900 text-right">{{ document.linked_crop.name if document.linked_crop else 'Not set' }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Linked Commodity</dt><dd class="text-gray-900 text-right">{{ document.linked_commodity.name if document.linked_commodity else 'Not set' }}</dd></div>
+            </dl>
+            {% if document.description %}
+            <div class="mt-5 pt-5 border-t">
+                <h3 class="text-sm font-medium text-gray-700 mb-2">Description</h3>
+                <p class="text-sm text-gray-600">{{ document.description }}</p>
+            </div>
+            {% endif %}
+        </div>
+
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <h2 class="text-xl font-semibold text-gray-900 mb-4">Status And Access</h2>
+            <dl class="space-y-3 text-sm">
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Document Status</dt><dd class="text-gray-900 text-right">{{ document.document_status|replace('_', ' ')|title }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Verification</dt><dd class="text-gray-900 text-right">{{ document.verification_status|replace('_', ' ')|title }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Review</dt><dd class="text-gray-900 text-right">{{ document.review_status|replace('_', ' ')|title }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Redaction</dt><dd class="text-gray-900 text-right">{{ document.redaction_status|replace('_', ' ')|title }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Subscriber Access</dt><dd class="text-gray-900 text-right">{{ document.subscriber_access_level|replace('_', ' ')|title }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Sensitive Type</dt><dd class="text-gray-900 text-right">{{ 'Yes' if document.document_type.sensitive else 'No' }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Reviewed</dt><dd class="text-gray-900 text-right">{{ document.reviewed_at.strftime('%Y-%m-%d') if document.reviewed_at else 'Not reviewed' }}</dd></div>
+            </dl>
+            {% if document.review_comments %}
+            <div class="mt-5 pt-5 border-t">
+                <h3 class="text-sm font-medium text-gray-700 mb-2">Review Comments</h3>
+                <p class="text-sm text-gray-600">{{ document.review_comments }}</p>
+            </div>
+            {% endif %}
+        </div>
+
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <h2 class="text-xl font-semibold text-gray-900 mb-4">Current File</h2>
+            <dl class="space-y-3 text-sm">
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Original Filename</dt><dd class="text-gray-900 text-right">{{ document.original_filename or 'Not set' }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Stored Filename</dt><dd class="text-gray-900 text-right">{{ document.stored_filename or 'Not set' }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">MIME Type</dt><dd class="text-gray-900 text-right">{{ document.mime_type or 'Not set' }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">File Size</dt><dd class="text-gray-900 text-right">{{ document.file_size or 0 }} bytes</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">SHA-256</dt><dd class="text-gray-900 text-right">{{ document.file_hash[:16] if document.file_hash else 'Not set' }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Current Version</dt><dd class="text-gray-900 text-right">v{{ document.version_number or 1 }}</dd></div>
+            </dl>
+        </div>
+
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <h2 class="text-xl font-semibold text-gray-900 mb-4">Actor Link</h2>
+            <dl class="space-y-3 text-sm">
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Actor</dt><dd class="text-gray-900 text-right"><a href="{{ url_for('partner.actor_detail', actor_id=actor.id) }}" class="text-primary hover:underline">{{ actor.name }}</a></dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Actor Type</dt><dd class="text-gray-900 text-right">{{ actor.actor_type|replace('_', ' ')|title }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Public ID</dt><dd class="text-gray-900 text-right">{{ actor.public_id }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Organization</dt><dd class="text-gray-900 text-right">{{ organization.name }}</dd></div>
+            </dl>
+        </div>
+    </div>
+
+    <div class="bg-white rounded-xl shadow-sm border overflow-hidden mt-6">
+        <div class="px-6 py-4 border-b">
+            <h2 class="text-xl font-semibold text-gray-900">Version History</h2>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Version</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Filename</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Size</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Hash</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Uploaded</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y">
+                    {% for version in document.versions|sort(attribute='version_number', reverse=True) %}
+                    <tr class="{% if version.version_number == document.version_number %}bg-emerald-50{% else %}hover:bg-gray-50{% endif %}">
+                        <td class="px-6 py-4 text-sm text-gray-700">v{{ version.version_number }}</td>
+                        <td class="px-6 py-4 text-sm text-gray-700">{{ version.original_filename or 'Not set' }}</td>
+                        <td class="px-6 py-4 text-sm text-gray-700">{{ version.content_type or 'Not set' }}</td>
+                        <td class="px-6 py-4 text-sm text-gray-700">{{ version.file_size_bytes or 0 }} bytes</td>
+                        <td class="px-6 py-4 text-sm text-gray-700">{{ version.checksum_sha256[:16] if version.checksum_sha256 else 'Not set' }}</td>
+                        <td class="px-6 py-4 text-sm text-gray-500">{{ version.created_at.strftime('%Y-%m-%d') if version.created_at else '' }}</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="6" class="px-6 py-8 text-center text-gray-500">No versions recorded</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
