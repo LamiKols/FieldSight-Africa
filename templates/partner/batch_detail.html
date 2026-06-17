@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+
+{% block title %}{{ batch.title or 'Batch' }} - FieldSight Africa{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="flex items-center justify-between mb-8">
+        <div>
+            <a href="{{ url_for('partner.batches') }}" class="text-primary hover:underline text-sm">&larr; Back to Batches</a>
+            <h1 class="text-3xl font-bold text-gray-900 mt-3">{{ batch.title or ('Batch #' ~ batch.id) }}</h1>
+            <p class="text-gray-600 mt-1">{{ batch.dataset_type|replace('_', ' ')|title }}{% if batch.reporting_month %} | {{ batch.reporting_month }}{% endif %}</p>
+        </div>
+        {% if batch.status == 'draft' and can_submit %}
+        <form method="POST" action="{{ url_for('partner.submit_batch', batch_id=batch.id) }}">
+            <button type="submit" class="bg-primary text-white px-5 py-2 rounded-lg hover:bg-secondary transition">Submit Batch</button>
+        </form>
+        {% endif %}
+    </div>
+
+    <div class="grid md:grid-cols-4 gap-6 mb-8">
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <h3 class="text-sm font-medium text-gray-500 uppercase tracking-wide">Status</h3>
+            <p class="text-2xl font-bold text-gray-900 mt-2">{{ batch.status|replace('_', ' ')|title }}</p>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <h3 class="text-sm font-medium text-gray-500 uppercase tracking-wide">Changes</h3>
+            <p class="text-2xl font-bold text-primary mt-2">{{ batch.record_changes|length }}</p>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <h3 class="text-sm font-medium text-gray-500 uppercase tracking-wide">Submitted</h3>
+            <p class="text-sm text-gray-900 mt-3">{{ batch.submitted_at.strftime('%Y-%m-%d %H:%M') if batch.submitted_at else 'Not submitted' }}</p>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <h3 class="text-sm font-medium text-gray-500 uppercase tracking-wide">Updated</h3>
+            <p class="text-sm text-gray-900 mt-3">{{ batch.updated_at.strftime('%Y-%m-%d %H:%M') if batch.updated_at else '' }}</p>
+        </div>
+    </div>
+
+    {% if batch.notes %}
+    <div class="bg-white rounded-xl shadow-sm border p-6 mb-8">
+        <h2 class="text-xl font-semibold text-gray-900 mb-3">Notes</h2>
+        <p class="text-gray-700">{{ batch.notes }}</p>
+    </div>
+    {% endif %}
+
+    <div class="bg-white rounded-xl shadow-sm border overflow-hidden">
+        <div class="p-6 border-b">
+            <h2 class="text-xl font-semibold text-gray-900">Record Changes</h2>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actor</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Created</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y">
+                    {% for change in batch.record_changes %}
+                    <tr>
+                        <td class="px-6 py-4 text-sm text-gray-700">{{ change.change_type|title }}</td>
+                        <td class="px-6 py-4 text-sm">
+                            {% if change.market_actor %}
+                            <a href="{{ url_for('partner.actor_detail', actor_id=change.market_actor.id) }}" class="text-primary hover:underline">{{ change.market_actor.name }}</a>
+                            {% else %}
+                            <span class="text-gray-500">Actor not linked</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-6 py-4 text-sm text-gray-700">{{ change.status|replace('_', ' ')|title }}</td>
+                        <td class="px-6 py-4 text-sm text-gray-500">{{ change.created_at.strftime('%Y-%m-%d %H:%M') if change.created_at else '' }}</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="4" class="px-6 py-8 text-center text-gray-500">No record changes in this batch yet</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

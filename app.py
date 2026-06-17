@@ -54,12 +54,21 @@ from routes.public import public_bp
 from routes.subscriber import subscriber_bp
 from routes.admin import admin_bp
 from routes.payments import payments_bp
+from routes.partner import partner_bp, get_current_partner_profile
 
 app.register_blueprint(auth_bp)
 app.register_blueprint(public_bp)
 app.register_blueprint(subscriber_bp)
 app.register_blueprint(admin_bp)
 app.register_blueprint(payments_bp)
+app.register_blueprint(partner_bp)
+
+
+@app.context_processor
+def inject_partner_profile():
+    if current_user.is_authenticated:
+        return {"current_partner_profile": get_current_partner_profile()}
+    return {"current_partner_profile": None}
 
 
 def migrate_payment_plans_table():

@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+
+{% block title %}Partner Actors - FieldSight Africa{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="flex items-center justify-between mb-8">
+        <div>
+            <a href="{{ url_for('partner.dashboard') }}" class="text-primary hover:underline text-sm">&larr; Back to Partner Dashboard</a>
+            <h1 class="text-3xl font-bold text-gray-900 mt-3">Actor Registry</h1>
+            <p class="text-gray-600 mt-1">{{ organization.name }}</p>
+        </div>
+        {% if can_edit %}
+        <a href="{{ url_for('partner.new_actor') }}" class="bg-primary text-white px-5 py-2 rounded-lg hover:bg-secondary transition">New Actor</a>
+        {% endif %}
+    </div>
+
+    <div class="bg-white rounded-xl shadow-sm border overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="w-full">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actor</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Crop / Category</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">State / LGA</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Registration</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Updated</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y">
+                    {% for actor in actors %}
+                    <tr class="hover:bg-gray-50">
+                        <td class="px-6 py-4">
+                            <a href="{{ url_for('partner.actor_detail', actor_id=actor.id) }}" class="font-medium text-primary hover:underline">{{ actor.name }}</a>
+                            <p class="text-xs text-gray-500">{{ actor.public_id }}</p>
+                        </td>
+                        <td class="px-6 py-4 text-sm text-gray-700">{{ actor.actor_type|replace('_', ' ')|title }}</td>
+                        <td class="px-6 py-4 text-sm text-gray-700">
+                            {{ actor.crop.name if actor.crop else 'Not set' }}
+                            {% if actor.commodity_category %}
+                            <p class="text-xs text-gray-500">{{ actor.commodity_category }}</p>
+                            {% endif %}
+                        </td>
+                        <td class="px-6 py-4 text-sm text-gray-700">
+                            {% if actor.location %}
+                                {{ actor.location.state_name or 'State not set' }}
+                                <p class="text-xs text-gray-500">{{ actor.location.lga_name or 'LGA not set' }}</p>
+                            {% else %}
+                                Not set
+                            {% endif %}
+                        </td>
+                        <td class="px-6 py-4 text-sm text-gray-700">{{ actor.registration_status or 'Not set' }}</td>
+                        <td class="px-6 py-4 text-sm text-gray-700">{{ actor.status|title }}</td>
+                        <td class="px-6 py-4 text-sm text-gray-500">{{ actor.updated_at.strftime('%Y-%m-%d') if actor.updated_at else '' }}</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="7" class="px-6 py-8 text-center text-gray-500">No actor records yet</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

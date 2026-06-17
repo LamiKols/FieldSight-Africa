@@ -1,0 +1,249 @@
+{% extends "base.html" %}
+
+{% set is_edit = actor is defined and actor %}
+{% set location = actor.location if is_edit else none %}
+{% set contact = actor.contacts[0] if is_edit and actor.contacts else none %}
+{% set export_profile = actor.export_profile if is_edit else none %}
+{% set certification = actor.certifications[0] if is_edit and actor.certifications else none %}
+{% set constraint = actor.constraints[0] if is_edit and actor.constraints else none %}
+{% set selected_status = actor.status if is_edit else 'active' %}
+
+{% block title %}{{ 'Edit Actor' if is_edit else 'New Actor' }} - FieldSight Africa{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="mb-6">
+        <a href="{{ url_for('partner.actors') }}" class="text-primary hover:underline text-sm">&larr; Back to Actors</a>
+    </div>
+
+    <form method="POST" class="space-y-6">
+        <div class="bg-white rounded-xl shadow-sm border p-8">
+            <h1 class="text-2xl font-bold text-gray-900 mb-6">{{ 'Edit Actor' if is_edit else 'New Actor' }}</h1>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <div>
+                    <label for="name" class="block text-sm font-medium text-gray-700 mb-1">Actor Name</label>
+                    <input type="text" name="name" id="name" required value="{{ actor.name if is_edit else '' }}"
+                           class="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-primary focus:border-transparent">
+                </div>
+
+                <div>
+                    <label for="actor_type" class="block text-sm font-medium text-gray-700 mb-1">Actor Type</label>
+                    <select name="actor_type" id="actor_type" required
+                            class="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-primary focus:border-transparent">
+                        <option value="">Select actor type</option>
+                        {% for actor_type in actor_types %}
+                        <option value="{{ actor_type }}" {% if is_edit and actor.actor_type == actor_type %}selected{% endif %}>{{ actor_type|replace('_', ' ')|title }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div>
+                    <label for="crop_id" class="block text-sm font-medium text-gray-700 mb-1">Crop</label>
+                    <select name="crop_id" id="crop_id"
+                            class="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-primary focus:border-transparent">
+                        <option value="">Not set</option>
+                        {% for crop in crops %}
+                        <option value="{{ crop.id }}" {% if is_edit and actor.crop_id == crop.id %}selected{% endif %}>{{ crop.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div>
+                    <label for="commodity_category" class="block text-sm font-medium text-gray-700 mb-1">Commodity Category</label>
+                    <input type="text" name="commodity_category" id="commodity_category" value="{{ actor.commodity_category if is_edit and actor.commodity_category else '' }}"
+                           class="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-primary focus:border-transparent">
+                </div>
+
+                <div>
+                    <label for="registration_status" class="block text-sm font-medium text-gray-700 mb-1">Registration Status</label>
+                    <input type="text" name="registration_status" id="registration_status" value="{{ actor.registration_status if is_edit and actor.registration_status else '' }}"
+                           class="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-primary focus:border-transparent">
+                </div>
+
+                <div>
+                    <label for="date_of_registration" class="block text-sm font-medium text-gray-700 mb-1">Date of Registration</label>
+                    <input type="date" name="date_of_registration" id="date_of_registration" value="{{ actor.date_of_registration.strftime('%Y-%m-%d') if is_edit and actor.date_of_registration else '' }}"
+                           class="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-primary focus:border-transparent">
+                </div>
+
+                <div>
+                    <label for="status" class="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                    <select name="status" id="status"
+                            class="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-primary focus:border-transparent">
+                        {% for status in status_choices %}
+                        <option value="{{ status }}" {% if selected_status == status %}selected{% endif %}>{{ status|title }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div>
+                    <label for="source_reference" class="block text-sm font-medium text-gray-700 mb-1">Source Reference</label>
+                    <input type="text" name="source_reference" id="source_reference" value="{{ actor.source_reference if is_edit and actor.source_reference else '' }}"
+                           class="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-primary focus:border-transparent">
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-xl shadow-sm border p-8">
+            <h2 class="text-xl font-semibold text-gray-900 mb-6">Location</h2>
+            <div class="grid md:grid-cols-2 gap-6">
+                <div>
+                    <label for="region_id" class="block text-sm font-medium text-gray-700 mb-1">Region</label>
+                    <select name="region_id" id="region_id"
+                            class="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-primary focus:border-transparent">
+                        <option value="">Not set</option>
+                        {% for region in regions %}
+                        <option value="{{ region.id }}" {% if location and location.region_id == region.id %}selected{% endif %}>{{ region.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label for="state_name" class="block text-sm font-medium text-gray-700 mb-1">State</label>
+                    <input type="text" name="state_name" id="state_name" value="{{ location.state_name if location and location.state_name else '' }}"
+                           class="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-primary focus:border-transparent">
+                </div>
+                <div>
+                    <label for="lga_name" class="block text-sm font-medium text-gray-700 mb-1">LGA</label>
+                    <input type="text" name="lga_name" id="lga_name" value="{{ location.lga_name if location and location.lga_name else '' }}"
+                           class="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-primary focus:border-transparent">
+                </div>
+                <div>
+                    <label for="location_text" class="block text-sm font-medium text-gray-700 mb-1">Location Text</label>
+                    <input type="text" name="location_text" id="location_text" value="{{ location.location_text if location and location.location_text else '' }}"
+                           class="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-primary focus:border-transparent">
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-xl shadow-sm border p-8">
+            <h2 class="text-xl font-semibold text-gray-900 mb-6">Restricted Contact</h2>
+            <input type="hidden" name="contact_restricted" value="true">
+            <div class="grid md:grid-cols-2 gap-6">
+                <div>
+                    <label for="contact_role" class="block text-sm font-medium text-gray-700 mb-1">Contact Role</label>
+                    <input type="text" name="contact_role" id="contact_role" value="{{ contact.contact_role if contact and contact.contact_role else '' }}"
+                           class="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-primary focus:border-transparent">
+                </div>
+                <div>
+                    <label for="contact_name" class="block text-sm font-medium text-gray-700 mb-1">Contact Name</label>
+                    <input type="text" name="contact_name" id="contact_name" value="{{ contact.contact_name if contact and contact.contact_name else '' }}"
+                           class="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-primary focus:border-transparent">
+                </div>
+                <div>
+                    <label for="contact_phone" class="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+                    <input type="text" name="contact_phone" id="contact_phone" value="{{ contact.phone if contact and contact.phone else '' }}"
+                           class="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-primary focus:border-transparent">
+                </div>
+                <div>
+                    <label for="contact_email" class="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                    <input type="email" name="contact_email" id="contact_email" value="{{ contact.email if contact and contact.email else '' }}"
+                           class="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-primary focus:border-transparent">
+                </div>
+                <div class="md:col-span-2">
+                    <label for="contact_notes" class="block text-sm font-medium text-gray-700 mb-1">Contact Notes</label>
+                    <textarea name="contact_notes" id="contact_notes" rows="2"
+                              class="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-primary focus:border-transparent">{{ contact.notes if contact and contact.notes else '' }}</textarea>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-xl shadow-sm border p-8">
+            <h2 class="text-xl font-semibold text-gray-900 mb-6">Export Profile</h2>
+            <div class="grid md:grid-cols-2 gap-6">
+                <div>
+                    <label for="years_in_export_trade" class="block text-sm font-medium text-gray-700 mb-1">Years in Export Trade</label>
+                    <input type="number" name="years_in_export_trade" id="years_in_export_trade" min="0" value="{{ export_profile.years_in_export_trade if export_profile and export_profile.years_in_export_trade is not none else '' }}"
+                           class="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-primary focus:border-transparent">
+                </div>
+                <div>
+                    <label for="trade_destination_name" class="block text-sm font-medium text-gray-700 mb-1">Trade Destination</label>
+                    <input type="text" name="trade_destination_name" id="trade_destination_name" value="{{ export_profile.trade_destination_name if export_profile and export_profile.trade_destination_name else '' }}"
+                           class="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-primary focus:border-transparent">
+                </div>
+                <div>
+                    <label for="export_capacity" class="block text-sm font-medium text-gray-700 mb-1">Export Capacity</label>
+                    <input type="text" name="export_capacity" id="export_capacity" value="{{ export_profile.export_capacity if export_profile and export_profile.export_capacity else '' }}"
+                           class="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-primary focus:border-transparent">
+                </div>
+                <div>
+                    <label for="export_capacity_unit" class="block text-sm font-medium text-gray-700 mb-1">Capacity Unit</label>
+                    <input type="text" name="export_capacity_unit" id="export_capacity_unit" value="{{ export_profile.export_capacity_unit if export_profile and export_profile.export_capacity_unit else '' }}"
+                           class="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-primary focus:border-transparent">
+                </div>
+                <div class="md:col-span-2">
+                    <label for="port_of_exit" class="block text-sm font-medium text-gray-700 mb-1">Port of Exit</label>
+                    <input type="text" name="port_of_exit" id="port_of_exit" value="{{ export_profile.port_of_exit if export_profile and export_profile.port_of_exit else '' }}"
+                           class="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-primary focus:border-transparent">
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-xl shadow-sm border p-8">
+            <h2 class="text-xl font-semibold text-gray-900 mb-6">Certification</h2>
+            <div class="grid md:grid-cols-2 gap-6">
+                <div>
+                    <label for="certification_name" class="block text-sm font-medium text-gray-700 mb-1">Certification Name</label>
+                    <input type="text" name="certification_name" id="certification_name" value="{{ certification.certification_name if certification and certification.certification_name else '' }}"
+                           class="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-primary focus:border-transparent">
+                </div>
+                <div>
+                    <label for="issuing_body" class="block text-sm font-medium text-gray-700 mb-1">Issuing Body</label>
+                    <input type="text" name="issuing_body" id="issuing_body" value="{{ certification.issuing_body if certification and certification.issuing_body else '' }}"
+                           class="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-primary focus:border-transparent">
+                </div>
+                <div>
+                    <label for="certificate_number" class="block text-sm font-medium text-gray-700 mb-1">Certificate Number</label>
+                    <input type="text" name="certificate_number" id="certificate_number" value="{{ certification.certificate_number if certification and certification.certificate_number else '' }}"
+                           class="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-primary focus:border-transparent">
+                </div>
+                <div>
+                    <label for="reference_number" class="block text-sm font-medium text-gray-700 mb-1">Reference Number</label>
+                    <input type="text" name="reference_number" id="reference_number" value="{{ certification.reference_number if certification and certification.reference_number else '' }}"
+                           class="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-primary focus:border-transparent">
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-xl shadow-sm border p-8">
+            <h2 class="text-xl font-semibold text-gray-900 mb-6">Constraint</h2>
+            <div class="grid md:grid-cols-2 gap-6">
+                <div>
+                    <label for="constraint_category" class="block text-sm font-medium text-gray-700 mb-1">Constraint Category</label>
+                    <input type="text" name="constraint_category" id="constraint_category" value="{{ constraint.constraint_category if constraint and constraint.constraint_category else '' }}"
+                           class="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-primary focus:border-transparent">
+                </div>
+                <div>
+                    <label for="constraint_severity" class="block text-sm font-medium text-gray-700 mb-1">Severity</label>
+                    <input type="text" name="constraint_severity" id="constraint_severity" value="{{ constraint.severity if constraint and constraint.severity else '' }}"
+                           class="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-primary focus:border-transparent">
+                </div>
+                <div class="md:col-span-2">
+                    <label for="constraint_text" class="block text-sm font-medium text-gray-700 mb-1">Constraint Text</label>
+                    <textarea name="constraint_text" id="constraint_text" rows="3"
+                              class="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-primary focus:border-transparent">{{ constraint.constraint_text if constraint and constraint.constraint_text else '' }}</textarea>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-xl shadow-sm border p-8">
+            <h2 class="text-xl font-semibold text-gray-900 mb-6">Batch Tracking</h2>
+            <label for="batch_id" class="block text-sm font-medium text-gray-700 mb-1">Draft Batch</label>
+            <select name="batch_id" id="batch_id"
+                    class="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-primary focus:border-transparent">
+                <option value="">Auto-track in a direct actor changes batch</option>
+                {% for batch in draft_batches %}
+                <option value="{{ batch.id }}">{{ batch.title or ('Draft batch #' ~ batch.id) }}{% if batch.reporting_month %} - {{ batch.reporting_month }}{% endif %}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="flex items-center justify-end space-x-4">
+            <a href="{{ url_for('partner.actors') }}" class="text-gray-600 hover:text-primary">Cancel</a>
+            <button type="submit" class="bg-primary text-white px-6 py-3 rounded-lg font-semibold hover:bg-secondary transition">
+                {{ 'Save Changes' if is_edit else 'Create Actor' }}
+            </button>
+        </div>
+    </form>
+</div>
+{% endblock %}

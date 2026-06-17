@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+
+{% block title %}{{ actor.name }} - FieldSight Africa{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="flex items-center justify-between mb-8">
+        <div>
+            <a href="{{ url_for('partner.actors') }}" class="text-primary hover:underline text-sm">&larr; Back to Actors</a>
+            <h1 class="text-3xl font-bold text-gray-900 mt-3">{{ actor.name }}</h1>
+            <p class="text-gray-600 mt-1">{{ actor.actor_type|replace('_', ' ')|title }} | {{ actor.public_id }}</p>
+        </div>
+        {% if can_edit %}
+        <a href="{{ url_for('partner.edit_actor', actor_id=actor.id) }}" class="bg-primary text-white px-5 py-2 rounded-lg hover:bg-secondary transition">Edit</a>
+        {% endif %}
+    </div>
+
+    <div class="grid lg:grid-cols-2 gap-6">
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <h2 class="text-xl font-semibold text-gray-900 mb-4">Actor Details</h2>
+            <dl class="space-y-3 text-sm">
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Crop</dt><dd class="text-gray-900 text-right">{{ actor.crop.name if actor.crop else 'Not set' }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Commodity Category</dt><dd class="text-gray-900 text-right">{{ actor.commodity_category or 'Not set' }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Registration Status</dt><dd class="text-gray-900 text-right">{{ actor.registration_status or 'Not set' }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Registration Date</dt><dd class="text-gray-900 text-right">{{ actor.date_of_registration.strftime('%Y-%m-%d') if actor.date_of_registration else 'Not set' }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Status</dt><dd class="text-gray-900 text-right">{{ actor.status|title }}</dd></div>
+            </dl>
+        </div>
+
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <h2 class="text-xl font-semibold text-gray-900 mb-4">Location</h2>
+            {% if actor.location %}
+            <dl class="space-y-3 text-sm">
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Region</dt><dd class="text-gray-900 text-right">{{ actor.location.region.name if actor.location.region else 'Not set' }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">State</dt><dd class="text-gray-900 text-right">{{ actor.location.state_name or 'Not set' }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">LGA</dt><dd class="text-gray-900 text-right">{{ actor.location.lga_name or 'Not set' }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Location</dt><dd class="text-gray-900 text-right">{{ actor.location.location_text or 'Not set' }}</dd></div>
+            </dl>
+            {% else %}
+            <p class="text-sm text-gray-500">No location details supplied.</p>
+            {% endif %}
+        </div>
+
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <h2 class="text-xl font-semibold text-gray-900 mb-4">Contact</h2>
+            {% if actor.contacts %}
+                {% for contact in actor.contacts %}
+                <dl class="space-y-3 text-sm {% if not loop.last %}pb-4 mb-4 border-b{% endif %}">
+                    <div class="flex justify-between gap-4"><dt class="text-gray-500">Role</dt><dd class="text-gray-900 text-right">{{ contact.contact_role or 'Not set' }}</dd></div>
+                    {% if show_restricted_contacts %}
+                    <div class="flex justify-between gap-4"><dt class="text-gray-500">Name</dt><dd class="text-gray-900 text-right">{{ contact.contact_name or 'Not set' }}</dd></div>
+                    <div class="flex justify-between gap-4"><dt class="text-gray-500">Phone</dt><dd class="text-gray-900 text-right">{{ contact.phone or 'Not set' }}</dd></div>
+                    <div class="flex justify-between gap-4"><dt class="text-gray-500">Email</dt><dd class="text-gray-900 text-right">{{ contact.email or 'Not set' }}</dd></div>
+                    {% else %}
+                    <div class="rounded-lg bg-gray-50 border p-3 text-sm text-gray-600">Restricted contact details are hidden for this role.</div>
+                    {% endif %}
+                </dl>
+                {% endfor %}
+            {% else %}
+            <p class="text-sm text-gray-500">No contact details supplied.</p>
+            {% endif %}
+        </div>
+
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <h2 class="text-xl font-semibold text-gray-900 mb-4">Export Profile</h2>
+            {% if actor.export_profile %}
+            <dl class="space-y-3 text-sm">
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Years in Trade</dt><dd class="text-gray-900 text-right">{{ actor.export_profile.years_in_export_trade if actor.export_profile.years_in_export_trade is not none else 'Not set' }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Destination</dt><dd class="text-gray-900 text-right">{{ actor.export_profile.trade_destination_name or 'Not set' }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Capacity</dt><dd class="text-gray-900 text-right">{{ actor.export_profile.export_capacity or 'Not set' }} {{ actor.export_profile.export_capacity_unit or '' }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Port of Exit</dt><dd class="text-gray-900 text-right">{{ actor.export_profile.port_of_exit or 'Not set' }}</dd></div>
+            </dl>
+            {% else %}
+            <p class="text-sm text-gray-500">No export profile supplied.</p>
+            {% endif %}
+        </div>
+
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <h2 class="text-xl font-semibold text-gray-900 mb-4">Certifications</h2>
+            {% if actor.certifications %}
+                {% for certification in actor.certifications %}
+                <dl class="space-y-3 text-sm {% if not loop.last %}pb-4 mb-4 border-b{% endif %}">
+                    <div class="flex justify-between gap-4"><dt class="text-gray-500">Name</dt><dd class="text-gray-900 text-right">{{ certification.certification_name or 'Not set' }}</dd></div>
+                    <div class="flex justify-between gap-4"><dt class="text-gray-500">Issuing Body</dt><dd class="text-gray-900 text-right">{{ certification.issuing_body or 'Not set' }}</dd></div>
+                    <div class="flex justify-between gap-4"><dt class="text-gray-500">Reference</dt><dd class="text-gray-900 text-right">{{ certification.reference_number or certification.certificate_number or 'Not set' }}</dd></div>
+                    <div class="flex justify-between gap-4"><dt class="text-gray-500">Status</dt><dd class="text-gray-900 text-right">{{ certification.status|title }}</dd></div>
+                </dl>
+                {% endfor %}
+            {% else %}
+            <p class="text-sm text-gray-500">No certifications supplied.</p>
+            {% endif %}
+        </div>
+
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <h2 class="text-xl font-semibold text-gray-900 mb-4">Constraints</h2>
+            {% if actor.constraints %}
+                {% for constraint in actor.constraints %}
+                <div class="{% if not loop.last %}pb-4 mb-4 border-b{% endif %}">
+                    <p class="text-sm font-medium text-gray-900">{{ constraint.constraint_category or 'General' }}{% if constraint.severity %} - {{ constraint.severity|title }}{% endif %}</p>
+                    <p class="text-sm text-gray-600 mt-1">{{ constraint.constraint_text }}</p>
+                </div>
+                {% endfor %}
+            {% else %}
+            <p class="text-sm text-gray-500">No constraints supplied.</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

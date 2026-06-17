@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+
+{% block title %}Partner Dashboard - FieldSight Africa{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="mb-8">
+        <p class="text-sm text-primary font-medium">Partner Portal</p>
+        <h1 class="text-3xl font-bold text-gray-900">{{ organization.name }}</h1>
+        <p class="text-gray-600 mt-1">Role: {{ profile.partner_role|replace('_', ' ')|title }}</p>
+    </div>
+
+    <div class="grid md:grid-cols-3 gap-6 mb-8">
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <h3 class="text-sm font-medium text-gray-500 uppercase tracking-wide">Actors</h3>
+            <p class="text-3xl font-bold text-gray-900 mt-2">{{ actor_count }}</p>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <h3 class="text-sm font-medium text-gray-500 uppercase tracking-wide">Draft Batches</h3>
+            <p class="text-3xl font-bold text-primary mt-2">{{ draft_batch_count }}</p>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <h3 class="text-sm font-medium text-gray-500 uppercase tracking-wide">Submitted Batches</h3>
+            <p class="text-3xl font-bold text-gray-900 mt-2">{{ submitted_batch_count }}</p>
+        </div>
+    </div>
+
+    <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <a href="{{ url_for('partner.actors') }}" class="bg-white rounded-xl border p-6 hover:border-primary transition">
+            <h2 class="text-lg font-semibold text-gray-900">Actor Registry</h2>
+            <p class="text-gray-600 text-sm mt-1">View your organization's submitted actor records.</p>
+        </a>
+
+        {% if can_edit %}
+        <a href="{{ url_for('partner.new_actor') }}" class="bg-primary text-white rounded-xl p-6 hover:bg-secondary transition">
+            <h2 class="text-lg font-semibold">Add Actor</h2>
+            <p class="text-green-100 text-sm mt-1">Create a structured actor registry record.</p>
+        </a>
+        {% endif %}
+
+        <a href="{{ url_for('partner.batches') }}" class="bg-white rounded-xl border p-6 hover:border-primary transition">
+            <h2 class="text-lg font-semibold text-gray-900">Update Batches</h2>
+            <p class="text-gray-600 text-sm mt-1">Track draft and submitted partner data updates.</p>
+        </a>
+
+        {% if can_edit %}
+        <a href="{{ url_for('partner.new_batch') }}" class="bg-white rounded-xl border p-6 hover:border-primary transition">
+            <h2 class="text-lg font-semibold text-gray-900">New Batch</h2>
+            <p class="text-gray-600 text-sm mt-1">Start a draft actor registry update batch.</p>
+        </a>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
