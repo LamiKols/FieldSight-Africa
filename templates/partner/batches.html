@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+
+{% block title %}Partner Batches - FieldSight Africa{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="flex items-center justify-between mb-8">
+        <div>
+            <a href="{{ url_for('partner.dashboard') }}" class="text-primary hover:underline text-sm">&larr; Back to Partner Dashboard</a>
+            <h1 class="text-3xl font-bold text-gray-900 mt-3">Update Batches</h1>
+            <p class="text-gray-600 mt-1">{{ organization.name }}</p>
+        </div>
+        {% if can_edit %}
+        <a href="{{ url_for('partner.new_batch') }}" class="bg-primary text-white px-5 py-2 rounded-lg hover:bg-secondary transition">New Batch</a>
+        {% endif %}
+    </div>
+
+    <div class="bg-white rounded-xl shadow-sm border overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="w-full">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Title</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Dataset Type</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Month</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Changes</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Updated</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y">
+                    {% for batch in batches %}
+                    <tr class="hover:bg-gray-50">
+                        <td class="px-6 py-4">
+                            <a href="{{ url_for('partner.batch_detail', batch_id=batch.id) }}" class="font-medium text-primary hover:underline">{{ batch.title or ('Batch #' ~ batch.id) }}</a>
+                        </td>
+                        <td class="px-6 py-4 text-sm text-gray-700">{{ batch.dataset_type|replace('_', ' ')|title }}</td>
+                        <td class="px-6 py-4 text-sm text-gray-700">{{ batch.reporting_month or 'Not set' }}</td>
+                        <td class="px-6 py-4 text-sm text-gray-700">{{ batch.status|replace('_', ' ')|title }}</td>
+                        <td class="px-6 py-4 text-sm text-gray-700">{{ batch.record_changes|length }}</td>
+                        <td class="px-6 py-4 text-sm text-gray-500">{{ batch.updated_at.strftime('%Y-%m-%d') if batch.updated_at else '' }}</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="6" class="px-6 py-8 text-center text-gray-500">No update batches yet</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
