@@ -7,7 +7,21 @@ from datetime import datetime
 from flask import Blueprint, render_template, redirect, url_for, flash, request
 from flask_login import login_required, current_user
 from functools import wraps
-from models import db, User, Subscription, Dataset, DatasetMonth, DatasetRecord, ExportLog, License, LiveIntelligenceAccess, get_region_from_state, NIGERIA_REGIONS
+from models import (
+    db,
+    User,
+    Subscription,
+    Dataset,
+    DatasetMonth,
+    DatasetRecord,
+    ExportLog,
+    License,
+    LiveIntelligenceAccess,
+    ReferenceOption,
+    REFERENCE_OPTION_CATEGORIES,
+    get_region_from_state,
+    NIGERIA_REGIONS,
+)
 
 admin_bp = Blueprint('admin', __name__, url_prefix='/admin')
 
@@ -179,6 +193,153 @@ def unpublish_dataset(dataset_month_id):
 def users():
     all_users = User.query.order_by(User.created_at.desc()).all()
     return render_template('admin/users.html', users=all_users)
+
+
+def parse_reference_option_form(existing_option=None):
+    errors = []
+    category = request.form.get('category', '').strip()
+    code = request.form.get('code', '').strip().lower().replace(' ', '_')
+    label = request.form.get('label', '').strip()
+    description = request.form.get('description', '').strip()
+    metadata_text = request.form.get('metadata_json', '').strip()
+
+    try:
+        sort_order = int(request.form.get('sort_order') or 0)
+    except ValueError:
+        sort_order = 0
+        errors.append('Sort order must be a number.')
+
+    if existing_option:
+        category = existing_option.category
+        code = existing_option.code
+    else:
+        if category not in REFERENCE_OPTION_CATEGORIES:
+            errors.append('Please choose a supported reference category.')
+        if not code:
+            errors.append('Code is required.')
+
+    if not label:
+        errors.append('Label is required.')
+
+    metadata_json = None
+    if metadata_text:
+        try:
+            metadata_json = json.loads(metadata_text)
+        except json.JSONDecodeError:
+            errors.append('Metadata must be valid JSON.')
+
+    return errors, {
+        'category': category,
+        'code': code,
+        'label': label,
+        'description': description or None,
+        'sort_order': sort_order,
+        'active': request.form.get('active') == 'true',
+        'is_default': request.form.get('is_default') == 'true',
+        'metadata_json': metadata_json,
+        'metadata_text': metadata_text,
+    }
+
+
+def apply_reference_option_values(option, values):
+    option.category = values['category']
+    option.code = values['code']
+    option.label = values['label']
+    option.description = values['description']
+    option.sort_order = values['sort_order']
+    option.active = values['active']
+    option.is_default = values['is_default']
+    option.metadata_json = values['metadata_json']
+
+
+def clear_other_default_options(option):
+    if not option.is_default:
+        return
+
+    ReferenceOption.query.filter(
+        ReferenceOption.category == option.category,
+        ReferenceOption.id != option.id,
+    ).update({'is_default': False})
+
+
+@admin_bp.route('/reference-options')
+@login_required
+@admin_required
+def reference_options():
+    selected_category = request.args.get('category', '').strip()
+    query = ReferenceOption.query
+    if selected_category:
+        query = query.filter_by(category=selected_category)
+
+    options = query.order_by(ReferenceOption.category, ReferenceOption.sort_order, ReferenceOption.label).all()
+    return render_template(
+        'admin/reference_options.html',
+        options=options,
+        categories=REFERENCE_OPTION_CATEGORIES,
+        selected_category=selected_category,
+    )
+
+
+@admin_bp.route('/reference-options/new', methods=['GET', 'POST'])
+@login_required
+@admin_required
+def new_reference_option():
+    if request.method == 'POST':
+        errors, values = parse_reference_option_form()
+        if not errors:
+            existing = ReferenceOption.query.filter_by(category=values['category'], code=values['code']).first()
+            if existing:
+                errors.append('A reference option with this category and code already exists.')
+
+        if errors:
+            for error in errors:
+                flash(error, 'error')
+            return render_template('admin/reference_option_form.html', option=None, categories=REFERENCE_OPTION_CATEGORIES, values=values)
+
+        option = ReferenceOption()
+        apply_reference_option_values(option, values)
+        db.session.add(option)
+        db.session.flush()
+        clear_other_default_options(option)
+        db.session.commit()
+
+        flash('Reference option created.', 'success')
+        return redirect(url_for('admin.reference_options', category=option.category))
+
+    return render_template('admin/reference_option_form.html', option=None, categories=REFERENCE_OPTION_CATEGORIES, values={})
+
+
+@admin_bp.route('/reference-options/<int:option_id>/edit', methods=['GET', 'POST'])
+@login_required
+@admin_required
+def edit_reference_option(option_id):
+    option = ReferenceOption.query.get_or_404(option_id)
+
+    if request.method == 'POST':
+        errors, values = parse_reference_option_form(existing_option=option)
+        if errors:
+            for error in errors:
+                flash(error, 'error')
+            return render_template('admin/reference_option_form.html', option=option, categories=REFERENCE_OPTION_CATEGORIES, values=values)
+
+        apply_reference_option_values(option, values)
+        clear_other_default_options(option)
+        db.session.commit()
+
+        flash('Reference option updated.', 'success')
+        return redirect(url_for('admin.reference_options', category=option.category))
+
+    values = {
+        'category': option.category,
+        'code': option.code,
+        'label': option.label,
+        'description': option.description,
+        'sort_order': option.sort_order,
+        'active': option.active,
+        'is_default': option.is_default,
+        'metadata_text': json.dumps(option.metadata_json, indent=2) if option.metadata_json else '',
+    }
+    return render_template('admin/reference_option_form.html', option=option, categories=REFERENCE_OPTION_CATEGORIES, values=values)
 
 
 @admin_bp.route('/users/<int:user_id>')

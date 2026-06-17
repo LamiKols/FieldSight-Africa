@@ -17,13 +17,21 @@ from models import (
     ActorExportProfile,
     ActorLocation,
     AuditLog,
+    CertificationType,
+    Commodity,
     Crop,
+    LGA,
     MarketActor,
+    Port,
     PartnerOrganization,
     PartnerRecordChange,
     PartnerUpdateBatch,
     PartnerUserProfile,
+    ReferenceOption,
     Region,
+    State,
+    TradeDestination,
+    calculate_actor_quality_score,
     db,
 )
 
@@ -142,6 +150,54 @@ def parse_optional_int(field_name, label, errors):
         return None
 
 
+def get_reference_options(category):
+    return (
+        ReferenceOption.query.filter_by(category=category, active=True)
+        .order_by(ReferenceOption.sort_order, ReferenceOption.label)
+        .all()
+    )
+
+
+def get_reference_options_by_category():
+    categories = [
+        "actor_status",
+        "registration_status",
+        "source_reference_type",
+        "contact_role",
+        "capacity_unit",
+        "certification_verification_status",
+        "certification_status",
+        "constraint_category",
+        "constraint_severity",
+        "constraint_status",
+    ]
+    return {category: get_reference_options(category) for category in categories}
+
+
+def reference_option_codes(category):
+    return {option.code for option in get_reference_options(category)}
+
+
+def validate_reference_value(category, value, label, errors, allow_free_text=True):
+    if not value:
+        return
+
+    codes = reference_option_codes(category)
+    if codes and value not in codes and not allow_free_text:
+        errors.append(f"Please select a supported {label}.")
+
+
+def get_optional_model(model, model_id, label, errors):
+    if not model_id:
+        return None
+
+    record = db.session.get(model, model_id)
+    if not record:
+        errors.append(f"Selected {label} was not found.")
+        return None
+    return record
+
+
 def parse_optional_date(field_name, label, errors):
     value = clean_form_value(field_name)
     if not value:
@@ -159,31 +215,65 @@ def parse_actor_form(profile):
     actor_type = clean_form_value("actor_type")
     status = clean_form_value("status") or "active"
     registration_status = clean_form_value("registration_status")
+    source_reference_type = clean_form_value("source_reference_type")
     commodity_category = clean_form_value("commodity_category")
     source_reference = clean_form_value("source_reference")
     date_of_registration = parse_optional_date("date_of_registration", "Date of registration", errors)
     crop_id = parse_optional_int("crop_id", "Crop", errors)
+    commodity_id = parse_optional_int("commodity_id", "Commodity", errors)
     region_id = parse_optional_int("region_id", "Region", errors)
+    state_id = parse_optional_int("state_id", "State", errors)
+    lga_id = parse_optional_int("lga_id", "LGA", errors)
     years_in_export_trade = parse_optional_int("years_in_export_trade", "Years in export trade", errors)
+    trade_destination_id = parse_optional_int("trade_destination_id", "Trade destination", errors)
+    port_id = parse_optional_int("port_id", "Port", errors)
+    certification_type_id = parse_optional_int("certification_type_id", "Certification type", errors)
 
     if not name:
         errors.append("Actor name is required.")
     if actor_type not in ACTOR_TYPES:
         errors.append("Please select a supported actor type.")
-    if status not in COMMON_STATUSES:
+    validate_reference_value("actor_status", status, "actor status", errors, allow_free_text=False)
+    validate_reference_value("registration_status", registration_status, "registration status", errors, allow_free_text=False)
+    validate_reference_value("source_reference_type", source_reference_type, "source reference type", errors, allow_free_text=False)
+    validate_reference_value("contact_role", clean_form_value("contact_role"), "contact role", errors, allow_free_text=True)
+    validate_reference_value("capacity_unit", clean_form_value("export_capacity_unit"), "capacity unit", errors, allow_free_text=True)
+    validate_reference_value("certification_verification_status", clean_form_value("certification_verification_status"), "certification verification status", errors, allow_free_text=False)
+    validate_reference_value("certification_status", clean_form_value("certification_status"), "certification status", errors, allow_free_text=False)
+    validate_reference_value("constraint_category", clean_form_value("constraint_category"), "constraint category", errors, allow_free_text=True)
+    validate_reference_value("constraint_severity", clean_form_value("constraint_severity"), "constraint severity", errors, allow_free_text=True)
+    validate_reference_value("constraint_status", clean_form_value("constraint_status"), "constraint status", errors, allow_free_text=False)
+
+    if status not in COMMON_STATUSES and not reference_option_codes("actor_status"):
         errors.append("Please select a supported actor status.")
 
     crop = None
     if crop_id:
-        crop = Crop.query.get(crop_id)
-        if not crop:
-            errors.append("Selected crop was not found.")
+        crop = get_optional_model(Crop, crop_id, "crop", errors)
+
+    commodity = get_optional_model(Commodity, commodity_id, "commodity", errors)
+    if commodity:
+        commodity_category = commodity.category or commodity.name
+        if not crop_id and commodity.crop_id:
+            crop_id = commodity.crop_id
 
     region = None
     if region_id:
-        region = Region.query.get(region_id)
-        if not region:
-            errors.append("Selected region was not found.")
+        region = get_optional_model(Region, region_id, "region", errors)
+
+    state = get_optional_model(State, state_id, "state", errors)
+    lga = get_optional_model(LGA, lga_id, "LGA", errors)
+    if lga:
+        state_id = lga.state_id
+        state = lga.state
+    if state:
+        state_id = state.id
+        region_id = state.region_id
+        region = state.region
+
+    trade_destination = get_optional_model(TradeDestination, trade_destination_id, "trade destination", errors)
+    port = get_optional_model(Port, port_id, "port", errors)
+    certification_type = get_optional_model(CertificationType, certification_type_id, "certification type", errors)
 
     constraint_values = [
         clean_form_value("constraint_category"),
@@ -209,12 +299,24 @@ def parse_actor_form(profile):
         "actor_type": actor_type,
         "status": status,
         "registration_status": registration_status or None,
+        "source_reference_type": source_reference_type or None,
+        "commodity_id": commodity_id,
         "commodity_category": commodity_category or (crop.name if crop else None),
         "source_reference": source_reference or None,
         "date_of_registration": date_of_registration,
         "crop_id": crop_id,
         "region_id": region_id,
+        "state_id": state_id,
+        "state_name": state.name if state else clean_form_value("state_name") or None,
+        "lga_id": lga_id,
+        "lga_name": lga.name if lga else clean_form_value("lga_name") or None,
         "years_in_export_trade": years_in_export_trade,
+        "trade_destination_id": trade_destination_id,
+        "trade_destination_name": trade_destination.name if trade_destination else clean_form_value("trade_destination_name") or None,
+        "port_id": port_id,
+        "port_of_exit": port.name if port else clean_form_value("port_of_exit") or None,
+        "certification_type_id": certification_type_id,
+        "certification_name": certification_type.name if certification_type else clean_form_value("certification_name") or None,
         "selected_batch": selected_batch,
     }
 
@@ -224,6 +326,8 @@ def update_actor_core(actor, values, profile):
     actor.actor_type = values["actor_type"]
     actor.status = values["status"]
     actor.registration_status = values["registration_status"]
+    actor.source_reference_type = values["source_reference_type"]
+    actor.commodity_id = values["commodity_id"]
     actor.commodity_category = values["commodity_category"]
     actor.source_reference = values["source_reference"]
     actor.date_of_registration = values["date_of_registration"]
@@ -248,8 +352,10 @@ def update_actor_location(actor, values):
     location.location_text = clean_form_value("location_text") or None
     location.location = location.location_text
     location.region_id = values["region_id"]
-    location.state_name = clean_form_value("state_name") or None
-    location.lga_name = clean_form_value("lga_name") or None
+    location.state_id = values["state_id"]
+    location.state_name = values["state_name"]
+    location.lga_id = values["lga_id"]
+    location.lga_name = values["lga_name"]
     location.country = clean_form_value("country") or "Nigeria"
     location.is_primary = True
 
@@ -274,7 +380,7 @@ def update_actor_contact(actor):
 
 
 def update_actor_export_profile(actor, values):
-    if not form_has_any("trade_destination_name", "export_capacity", "export_capacity_unit", "port_of_exit", "export_notes") and values["years_in_export_trade"] is None:
+    if not form_has_any("trade_destination_name", "export_capacity", "export_capacity_unit", "port_of_exit", "export_notes") and values["years_in_export_trade"] is None and not values["trade_destination_id"] and not values["port_id"]:
         return
 
     profile = actor.export_profile
@@ -283,15 +389,17 @@ def update_actor_export_profile(actor, values):
         db.session.add(profile)
 
     profile.years_in_export_trade = values["years_in_export_trade"]
-    profile.trade_destination_name = clean_form_value("trade_destination_name") or None
+    profile.trade_destination_id = values["trade_destination_id"]
+    profile.trade_destination_name = values["trade_destination_name"]
     profile.export_capacity = clean_form_value("export_capacity") or None
     profile.export_capacity_unit = clean_form_value("export_capacity_unit") or None
-    profile.port_of_exit = clean_form_value("port_of_exit") or None
+    profile.port_id = values["port_id"]
+    profile.port_of_exit = values["port_of_exit"]
     profile.notes = clean_form_value("export_notes") or None
 
 
-def update_actor_certification(actor):
-    if not form_has_any("certification_name", "certificate_number", "reference_number", "issuing_body", "certification_notes"):
+def update_actor_certification(actor, values):
+    if not form_has_any("certification_type_id", "certification_name", "certificate_number", "reference_number", "issuing_body", "certification_notes"):
         return
 
     certification = actor.certifications[0] if actor.certifications else None
@@ -299,7 +407,8 @@ def update_actor_certification(actor):
         certification = ActorCertification(market_actor_id=actor.id)
         db.session.add(certification)
 
-    certification.certification_name = clean_form_value("certification_name") or None
+    certification.certification_type_id = values["certification_type_id"]
+    certification.certification_name = values["certification_name"]
     certification.certificate_number = clean_form_value("certificate_number") or None
     certification.reference_number = clean_form_value("reference_number") or None
     certification.issuing_body = clean_form_value("issuing_body") or None
@@ -309,7 +418,7 @@ def update_actor_certification(actor):
 
 
 def update_actor_constraint(actor):
-    if not form_has_any("constraint_category", "constraint_text", "constraint_severity"):
+    if not form_has_any("constraint_category", "constraint_text", "constraint_severity") and not actor.constraints:
         return
 
     constraint = actor.constraints[0] if actor.constraints else None
@@ -328,7 +437,7 @@ def apply_actor_form(actor, values, profile):
     update_actor_location(actor, values)
     update_actor_contact(actor)
     update_actor_export_profile(actor, values)
-    update_actor_certification(actor)
+    update_actor_certification(actor, values)
     update_actor_constraint(actor)
 
 
@@ -350,15 +459,19 @@ def actor_snapshot(actor):
         "actor_type": actor.actor_type,
         "name": actor.name,
         "crop_id": actor.crop_id,
+        "commodity_id": actor.commodity_id,
         "commodity_category": actor.commodity_category,
         "registration_status": actor.registration_status,
         "date_of_registration": iso_date(actor.date_of_registration),
         "status": actor.status,
+        "source_reference_type": actor.source_reference_type,
         "source_reference": actor.source_reference,
         "location": {
             "location_text": location.location_text if location else None,
             "region_id": location.region_id if location else None,
+            "state_id": location.state_id if location else None,
             "state_name": location.state_name if location else None,
+            "lga_id": location.lga_id if location else None,
             "lga_name": location.lga_name if location else None,
             "country": location.country if location else None,
         },
@@ -371,16 +484,20 @@ def actor_snapshot(actor):
         },
         "export_profile": {
             "years_in_export_trade": export_profile.years_in_export_trade if export_profile else None,
+            "trade_destination_id": export_profile.trade_destination_id if export_profile else None,
             "trade_destination_name": export_profile.trade_destination_name if export_profile else None,
             "export_capacity": export_profile.export_capacity if export_profile else None,
             "export_capacity_unit": export_profile.export_capacity_unit if export_profile else None,
+            "port_id": export_profile.port_id if export_profile else None,
             "port_of_exit": export_profile.port_of_exit if export_profile else None,
         },
         "certification": {
+            "certification_type_id": certification.certification_type_id if certification else None,
             "certification_name": certification.certification_name if certification else None,
             "certificate_number": certification.certificate_number if certification else None,
             "reference_number": certification.reference_number if certification else None,
             "issuing_body": certification.issuing_body if certification else None,
+            "verification_status": certification.verification_status if certification else None,
             "status": certification.status if certification else None,
         },
         "constraint": {
@@ -467,14 +584,28 @@ def batch_snapshot(batch):
 
 
 def actor_form_context(profile, actor=None):
+    commodities = Commodity.query.filter_by(active=True).order_by(Commodity.name).all()
+    states = State.query.filter_by(active=True).order_by(State.name).all()
+    lgas = LGA.query.filter_by(active=True).order_by(LGA.name).all()
+    trade_destinations = TradeDestination.query.filter_by(active=True).order_by(TradeDestination.name).all()
+    ports = Port.query.filter_by(active=True).order_by(Port.name).all()
+    certification_types = CertificationType.query.filter_by(active=True).order_by(CertificationType.name).all()
+
     return {
         "profile": profile,
         "organization": profile.partner_organization,
         "actor": actor,
         "actor_types": ACTOR_TYPES,
         "status_choices": COMMON_STATUSES,
+        "reference_options": get_reference_options_by_category(),
         "regions": Region.query.filter_by(active=True).order_by(Region.name).all(),
         "crops": Crop.query.filter_by(active=True).order_by(Crop.name).all(),
+        "commodities": commodities,
+        "states": states,
+        "lgas": lgas,
+        "trade_destinations": trade_destinations,
+        "ports": ports,
+        "certification_types": certification_types,
         "draft_batches": PartnerUpdateBatch.query.filter_by(
             partner_organization_id=profile.partner_organization_id,
             status="draft",
@@ -488,7 +619,10 @@ def actor_form_context(profile, actor=None):
 def dashboard():
     profile = get_current_partner_profile()
     org = profile.partner_organization
-    actor_count = MarketActor.query.filter_by(partner_organization_id=org.id).count()
+    actor_rows = MarketActor.query.filter_by(partner_organization_id=org.id).all()
+    actor_count = len(actor_rows)
+    quality_scores = [calculate_actor_quality_score(actor) for actor in actor_rows]
+    average_quality_score = round(sum(item["score"] for item in quality_scores) / actor_count) if actor_count else None
     draft_batch_count = PartnerUpdateBatch.query.filter_by(
         partner_organization_id=org.id,
         status="draft",
@@ -503,6 +637,7 @@ def dashboard():
         profile=profile,
         organization=org,
         actor_count=actor_count,
+        average_quality_score=average_quality_score,
         draft_batch_count=draft_batch_count,
         submitted_batch_count=submitted_batch_count,
         can_edit=can_edit_partner_records(profile),
@@ -520,11 +655,13 @@ def actors():
         .order_by(MarketActor.updated_at.desc())
         .all()
     )
+    quality_scores = {actor.id: calculate_actor_quality_score(actor) for actor in actor_rows}
     return render_template(
         "partner/actors.html",
         profile=profile,
         organization=profile.partner_organization,
         actors=actor_rows,
+        quality_scores=quality_scores,
         can_edit=can_edit_partner_records(profile),
     )
 
@@ -584,6 +721,7 @@ def actor_detail(actor_id):
         profile=profile,
         organization=profile.partner_organization,
         actor=actor,
+        quality_score=calculate_actor_quality_score(actor),
         can_edit=can_edit_partner_records(profile),
         show_restricted_contacts=can_view_restricted_contacts(profile),
     )

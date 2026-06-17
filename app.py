@@ -20,7 +20,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from models import db, User, PaymentPlan, Dataset, LicensedPack, Region, Crop, DocumentType
+from models import db, User, PaymentPlan, Dataset, LicensedPack, Region, Crop, DocumentType, ReferenceOption
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SESSION_SECRET', 'dev-secret-key')
@@ -335,6 +335,105 @@ DOCUMENT_TYPE_NAMES = [
     "Bank Account Confirmation",
 ]
 
+REFERENCE_OPTIONS = {
+    "actor_status": [
+        ("active", "Active"),
+        ("inactive", "Inactive"),
+        ("suspended", "Suspended"),
+        ("archived", "Archived"),
+        ("pending_review", "Pending Review"),
+    ],
+    "registration_status": [
+        ("registered", "Registered"),
+        ("unregistered", "Unregistered"),
+        ("pending_registration", "Pending Registration"),
+        ("expired_registration", "Expired Registration"),
+        ("not_applicable", "Not Applicable"),
+        ("unknown", "Unknown"),
+    ],
+    "source_reference_type": [
+        ("partner_field_report", "Partner Field Report"),
+        ("government_registry", "Government Registry"),
+        ("export_permit", "Export Permit"),
+        ("cooperative_register", "Cooperative Register"),
+        ("inspection_report", "Inspection Report"),
+        ("manual_entry", "Manual Entry"),
+        ("spreadsheet_import", "Spreadsheet Import"),
+        ("other", "Other"),
+    ],
+    "contact_role": [
+        ("owner", "Owner"),
+        ("managing_director", "Managing Director"),
+        ("operations_manager", "Operations Manager"),
+        ("export_manager", "Export Manager"),
+        ("farm_manager", "Farm Manager"),
+        ("cooperative_lead", "Cooperative Lead"),
+        ("warehouse_contact", "Warehouse Contact"),
+        ("finance_contact", "Finance Contact"),
+        ("compliance_contact", "Compliance Contact"),
+        ("other", "Other"),
+    ],
+    "capacity_unit": [
+        ("mt_month", "MT/month"),
+        ("mt_year", "MT/year"),
+        ("kg_week", "KG/week"),
+        ("kg_month", "KG/month"),
+        ("bags_month", "bags/month"),
+        ("bags_year", "bags/year"),
+        ("containers_month", "containers/month"),
+        ("containers_year", "containers/year"),
+        ("hectares", "hectares"),
+        ("tonnes", "tonnes"),
+        ("other", "Other"),
+    ],
+    "certification_verification_status": [
+        ("unverified", "Unverified"),
+        ("submitted", "Submitted"),
+        ("verified", "Verified"),
+        ("expired", "Expired"),
+        ("rejected", "Rejected"),
+        ("superseded", "Superseded"),
+    ],
+    "certification_status": [
+        ("active", "Active"),
+        ("expired", "Expired"),
+        ("revoked", "Revoked"),
+        ("suspended", "Suspended"),
+        ("pending", "Pending"),
+        ("unknown", "Unknown"),
+    ],
+    "constraint_category": [
+        ("logistics", "Logistics"),
+        ("finance", "Finance"),
+        ("infrastructure", "Infrastructure"),
+        ("documentation", "Documentation"),
+        ("regulatory_compliance", "Regulatory Compliance"),
+        ("quality_control", "Quality Control"),
+        ("storage_warehousing", "Storage / Warehousing"),
+        ("processing_capacity", "Processing Capacity"),
+        ("power_energy", "Power / Energy"),
+        ("security", "Security"),
+        ("market_access", "Market Access"),
+        ("input_supply", "Input Supply"),
+        ("labour", "Labour"),
+        ("weather_climate", "Weather / Climate"),
+        ("other", "Other"),
+    ],
+    "constraint_severity": [
+        ("low", "Low"),
+        ("medium", "Medium"),
+        ("high", "High"),
+        ("critical", "Critical"),
+    ],
+    "constraint_status": [
+        ("active", "Active"),
+        ("resolved", "Resolved"),
+        ("monitoring", "Monitoring"),
+        ("deferred", "Deferred"),
+        ("not_applicable", "Not Applicable"),
+    ],
+}
+
 
 def make_code(name):
     return name.lower().replace(".", "").replace("&", "and").replace("/", " ").replace("-", " ").replace(" ", "_")
@@ -410,14 +509,53 @@ def seed_document_types():
     db.session.commit()
 
 
+def migrate_phase_2_1_tables():
+    """Add small Phase 2.1 columns to existing databases without a migration framework."""
+    from sqlalchemy import inspect, text
+
+    try:
+        inspector = inspect(db.engine)
+        if "market_actors" not in inspector.get_table_names():
+            return
+        market_actor_columns = {column["name"] for column in inspector.get_columns("market_actors")}
+        if "source_reference_type" not in market_actor_columns:
+            db.session.execute(text("ALTER TABLE market_actors ADD COLUMN source_reference_type VARCHAR(80)"))
+            db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        print(f"Phase 2.1 migration warning: {e}")
+
+
+def seed_reference_options():
+    for category, options in REFERENCE_OPTIONS.items():
+        for sort_order, (code, label) in enumerate(options, start=1):
+            option = ReferenceOption.query.filter_by(category=category, code=code).first()
+            if option:
+                option.label = label
+                option.sort_order = sort_order
+            else:
+                db.session.add(ReferenceOption(
+                    category=category,
+                    code=code,
+                    label=label,
+                    sort_order=sort_order,
+                    active=True,
+                    is_default=sort_order == 1,
+                ))
+
+    db.session.commit()
+
+
 with app.app_context():
     db.create_all()
     migrate_payment_plans_table()
+    migrate_phase_2_1_tables()
     seed_payment_plans()
     seed_datasets()
     seed_licensed_packs()
     seed_reference_data()
     seed_document_types()
+    seed_reference_options()
 
 
 if __name__ == '__main__':

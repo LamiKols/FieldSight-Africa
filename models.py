@@ -31,6 +31,8 @@ COMMON_STATUSES = [
     "inactive",
     "suspended",
     "pending",
+    "archived",
+    "pending_review",
 ]
 
 ACTOR_TYPES = [
@@ -86,6 +88,19 @@ DOCUMENT_VISIBILITY_LEVELS = [
     "metadata_only",
     "redacted_document",
     "full_document",
+]
+
+REFERENCE_OPTION_CATEGORIES = [
+    "actor_status",
+    "registration_status",
+    "source_reference_type",
+    "contact_role",
+    "capacity_unit",
+    "certification_verification_status",
+    "certification_status",
+    "constraint_category",
+    "constraint_severity",
+    "constraint_status",
 ]
 
 NIGERIA_REGIONS = {
@@ -469,6 +484,24 @@ class CertificationType(TimestampMixin, db.Model):
     active = db.Column(db.Boolean, default=True)
 
 
+class ReferenceOption(TimestampMixin, db.Model):
+    __tablename__ = 'reference_options'
+
+    id = db.Column(db.Integer, primary_key=True)
+    category = db.Column(db.String(80), nullable=False)
+    code = db.Column(db.String(80), nullable=False)
+    label = db.Column(db.String(150), nullable=False)
+    description = db.Column(db.Text)
+    sort_order = db.Column(db.Integer, default=0)
+    active = db.Column(db.Boolean, default=True)
+    is_default = db.Column(db.Boolean, default=False)
+    metadata_json = db.Column(db.JSON)
+
+    __table_args__ = (
+        db.UniqueConstraint('category', 'code', name='unique_reference_option_category_code'),
+    )
+
+
 class MarketActor(TimestampMixin, db.Model):
     __tablename__ = 'market_actors'
 
@@ -485,6 +518,7 @@ class MarketActor(TimestampMixin, db.Model):
     registration_status = db.Column(db.String(80))
     date_of_registration = db.Column(db.Date)
     status = db.Column(db.String(20), default='active')
+    source_reference_type = db.Column(db.String(80))
     source_reference = db.Column(db.String(120))
     metadata_json = db.Column(db.JSON)
     archived_at = db.Column(db.DateTime)
@@ -964,4 +998,97 @@ def get_user_entitlements(user):
         'monthly_export_limit': 0,
         'snapshot_month': None,
         'source': None
+    }
+
+
+def calculate_actor_quality_score(actor):
+    """Return advisory data quality scoring for a market actor."""
+
+    def has_value(value):
+        return value is not None and value != ""
+
+    def score_section(name, max_points, checks):
+        passed = [check for check in checks if check["complete"]]
+        points = round(max_points * (len(passed) / len(checks))) if checks else 0
+        completed = len(passed) == len(checks)
+        return {
+            "name": name,
+            "points": points,
+            "max_points": max_points,
+            "complete": completed,
+            "checks": checks,
+        }
+
+    location = actor.location
+    primary_contact = actor.contacts[0] if actor.contacts else None
+    export_profile = actor.export_profile
+    certification = actor.certifications[0] if actor.certifications else None
+    constraint = actor.constraints[0] if actor.constraints else None
+
+    sections = [
+        score_section("Core identity", 25, [
+            {"label": "Actor name", "complete": has_value(actor.name)},
+            {"label": "Actor type", "complete": has_value(actor.actor_type)},
+            {"label": "Actor status", "complete": has_value(actor.status)},
+            {"label": "Crop or commodity category", "complete": bool(actor.crop_id or actor.commodity_id or has_value(actor.commodity_category))},
+        ]),
+        score_section("Location", 15, [
+            {"label": "Region, state, LGA, or location text", "complete": bool(location and (location.region_id or location.state_id or location.lga_id or has_value(location.state_name) or has_value(location.lga_name) or has_value(location.location_text)))},
+        ]),
+        score_section("Contact", 15, [
+            {"label": "Contact name", "complete": bool(primary_contact and has_value(primary_contact.contact_name))},
+            {"label": "Contact role", "complete": bool(primary_contact and has_value(primary_contact.contact_role))},
+            {"label": "Phone or email", "complete": bool(primary_contact and (has_value(primary_contact.phone) or has_value(primary_contact.email)))},
+        ]),
+        score_section("Export profile", 15, [
+            {"label": "Years in trade", "complete": bool(export_profile and export_profile.years_in_export_trade is not None)},
+            {"label": "Destination", "complete": bool(export_profile and (export_profile.trade_destination_id or has_value(export_profile.trade_destination_name)))},
+            {"label": "Capacity", "complete": bool(export_profile and has_value(export_profile.export_capacity))},
+            {"label": "Port", "complete": bool(export_profile and (export_profile.port_id or has_value(export_profile.port_of_exit)))},
+        ]),
+        score_section("Certification", 15, [
+            {"label": "Certification name or type", "complete": bool(certification and (certification.certification_type_id or has_value(certification.certification_name)))},
+            {"label": "Issuing body", "complete": bool(certification and has_value(certification.issuing_body))},
+            {"label": "Reference or certificate number", "complete": bool(certification and (has_value(certification.reference_number) or has_value(certification.certificate_number)))},
+            {"label": "Certification status", "complete": bool(certification and has_value(certification.status))},
+        ]),
+        score_section("Operational constraint", 5, [
+            {"label": "Constraint category, text, and severity", "complete": bool(constraint and ((constraint.status == "not_applicable") or (has_value(constraint.constraint_category) and has_value(constraint.constraint_text) and has_value(constraint.severity))))},
+        ]),
+        score_section("Partner workflow", 5, [
+            {"label": "At least one partner record change", "complete": bool(actor.partner_record_changes)},
+        ]),
+        {
+            "name": "Documents readiness",
+            "points": 0,
+            "max_points": 5,
+            "complete": False,
+            "deferred": True,
+            "checks": [
+                {"label": "Document vault deferred until Phase 3", "complete": False}
+            ],
+        },
+    ]
+
+    score = sum(section["points"] for section in sections)
+    if score >= 90:
+        grade = "complete"
+    elif score >= 70:
+        grade = "high"
+    elif score >= 40:
+        grade = "medium"
+    else:
+        grade = "low"
+
+    completed_sections = [section["name"] for section in sections if section["complete"]]
+    missing_sections = [section["name"] for section in sections if not section["complete"] and not section.get("deferred")]
+    deferred_sections = [section["name"] for section in sections if section.get("deferred")]
+
+    return {
+        "score": score,
+        "grade": grade,
+        "completed_sections": completed_sections,
+        "missing_sections": missing_sections,
+        "deferred_sections": deferred_sections,
+        "checks": sections,
     }
