@@ -1,0 +1,243 @@
+{% extends "base.html" %}
+
+{% block title %}Admin Document Review - FieldSight Africa{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="flex items-center justify-between mb-8">
+        <div>
+            <a href="{{ url_for('admin.document_review_queue') }}" class="text-primary hover:underline text-sm">&larr; Back to Review Queue</a>
+            <h1 class="text-3xl font-bold text-gray-900 mt-3">{{ document.title }}</h1>
+            <p class="text-gray-600 mt-1">{{ actor.name }} | {{ partner_organization.name }} | v{{ document.version_number or 1 }}</p>
+        </div>
+        <a href="{{ url_for('admin.preview_document', document_id=document.id) }}" class="bg-primary text-white px-5 py-2 rounded-lg hover:bg-secondary transition">Preview</a>
+    </div>
+
+    <div class="rounded-xl bg-blue-50 border border-blue-200 p-5 mb-6 text-sm text-blue-800">
+        Admin approval in this phase is for internal verified use only. It does not publish the document to subscribers, APIs, licensed packs, or buyer due diligence.
+    </div>
+
+    {% if consent.warning %}
+    <div class="rounded-xl bg-amber-50 border border-amber-200 p-5 mb-6 text-sm text-amber-800">
+        {{ consent.warning }}
+    </div>
+    {% endif %}
+
+    <div class="grid lg:grid-cols-3 gap-6 mb-6">
+        <div class="lg:col-span-2 bg-white rounded-xl shadow-sm border overflow-hidden">
+            <div class="px-6 py-4 border-b flex items-center justify-between gap-4">
+                <div>
+                    <h2 class="text-xl font-semibold text-gray-900">Admin Preview</h2>
+                    <p class="text-sm text-gray-500 mt-1">{{ preview_policy.message }}</p>
+                </div>
+                <span class="text-xs uppercase tracking-wide text-gray-600 bg-gray-100 border border-gray-200 rounded-full px-3 py-1">Admin Only</span>
+            </div>
+            <div class="p-6">
+                {% if preview_policy.allowed %}
+                    {% if preview_policy.preview_kind == 'image' %}
+                    <img src="{{ url_for('admin.preview_document', document_id=document.id) }}" alt="{{ document.title }}" class="w-full max-h-[560px] object-contain rounded-lg border bg-gray-50">
+                    {% elif preview_policy.preview_kind in ['pdf', 'text'] %}
+                    <iframe src="{{ url_for('admin.preview_document', document_id=document.id) }}" title="{{ document.title }} preview" class="w-full h-[560px] rounded-lg border bg-gray-50"></iframe>
+                    {% else %}
+                    <div class="rounded-lg border bg-gray-50 p-8 text-center text-sm text-gray-600">Preview is not available for this file type.</div>
+                    {% endif %}
+                {% else %}
+                <div class="rounded-lg border bg-gray-50 p-8 text-center text-sm text-gray-600">{{ preview_policy.message }}</div>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="space-y-6">
+            <div class="bg-white rounded-xl shadow-sm border p-6">
+                <h2 class="text-xl font-semibold text-gray-900 mb-4">Review State</h2>
+                <dl class="space-y-3 text-sm">
+                    <div class="flex justify-between gap-4"><dt class="text-gray-500">Document</dt><dd class="text-gray-900 text-right">{{ document.document_status|replace('_', ' ')|title }}</dd></div>
+                    <div class="flex justify-between gap-4"><dt class="text-gray-500">Review</dt><dd class="text-gray-900 text-right">{{ document.review_status|replace('_', ' ')|title }}</dd></div>
+                    <div class="flex justify-between gap-4"><dt class="text-gray-500">Verification</dt><dd class="text-gray-900 text-right">{{ document.verification_status|replace('_', ' ')|title }}</dd></div>
+                    <div class="flex justify-between gap-4"><dt class="text-gray-500">Redaction</dt><dd class="text-gray-900 text-right">{{ document.redaction_status|replace('_', ' ')|title }}</dd></div>
+                    <div class="flex justify-between gap-4"><dt class="text-gray-500">Sensitive Type</dt><dd class="text-gray-900 text-right">{{ 'Yes' if document.document_type.sensitive else 'No' }}</dd></div>
+                    <div class="flex justify-between gap-4"><dt class="text-gray-500">Subscriber Access</dt><dd class="text-gray-900 text-right">{{ document.subscriber_access_level|replace('_', ' ')|title }}</dd></div>
+                </dl>
+            </div>
+
+            <form method="POST" action="{{ url_for('admin.document_review_decision', document_id=document.id) }}" class="bg-white rounded-xl shadow-sm border p-6">
+                <h2 class="text-xl font-semibold text-gray-900 mb-4">Decision</h2>
+                <div class="space-y-4">
+                    <div>
+                        <label for="action" class="block text-sm font-medium text-gray-700 mb-1">Action</label>
+                        <select name="action" id="action" required class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                            <option value="">Choose action</option>
+                            <option value="approve">Approve</option>
+                            <option value="reject">Reject</option>
+                            <option value="request_correction">Request Correction</option>
+                            <option value="require_redaction">Require Redaction</option>
+                            <option value="mark_verified">Mark Verified</option>
+                            <option value="mark_unverified">Mark Unverified</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="verification_status" class="block text-sm font-medium text-gray-700 mb-1">Optional Verification Status</label>
+                        <select name="verification_status" id="verification_status" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                            <option value="">No change</option>
+                            {% for status in verification_statuses %}
+                            <option value="{{ status }}">{{ status|replace('_', ' ')|title }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div>
+                        <label for="review_notes" class="block text-sm font-medium text-gray-700 mb-1">Review Notes</label>
+                        <textarea name="review_notes" id="review_notes" rows="3" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"></textarea>
+                    </div>
+                    <div>
+                        <label for="correction_reason" class="block text-sm font-medium text-gray-700 mb-1">Correction Reason</label>
+                        <textarea name="correction_reason" id="correction_reason" rows="2" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"></textarea>
+                    </div>
+                    <div>
+                        <label for="rejection_reason" class="block text-sm font-medium text-gray-700 mb-1">Rejection Reason</label>
+                        <textarea name="rejection_reason" id="rejection_reason" rows="2" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"></textarea>
+                    </div>
+                    <button type="submit" class="w-full bg-primary text-white px-5 py-2 rounded-lg hover:bg-secondary transition">Save Decision</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="grid lg:grid-cols-3 gap-6 mb-6">
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <h2 class="text-xl font-semibold text-gray-900 mb-4">Actor And Partner</h2>
+            <dl class="space-y-3 text-sm">
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Actor</dt><dd class="text-gray-900 text-right">{{ actor.name }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Actor Type</dt><dd class="text-gray-900 text-right">{{ actor.actor_type|replace('_', ' ')|title }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Public ID</dt><dd class="text-gray-900 text-right">{{ actor.public_id }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Partner</dt><dd class="text-gray-900 text-right">{{ partner_organization.name }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Actor Status</dt><dd class="text-gray-900 text-right">{{ actor.status|replace('_', ' ')|title }}</dd></div>
+            </dl>
+        </div>
+
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <h2 class="text-xl font-semibold text-gray-900 mb-4">Consent</h2>
+            <dl class="space-y-3 text-sm">
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Status</dt><dd class="text-gray-900 text-right">{{ consent.consent_status|replace('_', ' ')|title }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Category</dt><dd class="text-gray-900 text-right">{{ consent.document_category|replace('_', ' ')|title }}</dd></div>
+                {% if consent.active_consent %}
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Method</dt><dd class="text-gray-900 text-right">{{ consent.active_consent.consent_method|replace('_', ' ')|title }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Reference</dt><dd class="text-gray-900 text-right">{{ consent.active_consent.consent_reference or 'Not set' }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Expires</dt><dd class="text-gray-900 text-right">{{ consent.active_consent.expires_at.strftime('%Y-%m-%d') if consent.active_consent.expires_at else 'No expiry' }}</dd></div>
+                {% endif %}
+            </dl>
+            <div class="mt-5 pt-5 border-t">
+                <h3 class="text-sm font-medium text-gray-700 mb-2">External Channels</h3>
+                <div class="space-y-2 text-sm">
+                    {% for channel, allowed in consent.channel_permissions.items() %}
+                    <div class="flex justify-between gap-3">
+                        <span class="text-gray-500">{{ channel|replace('_', ' ')|title }}</span>
+                        <span class="{{ 'text-emerald-700' if allowed else 'text-red-700' }}">{{ 'Allowed' if allowed else 'Blocked' }}</span>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <h2 class="text-xl font-semibold text-gray-900 mb-4">Document Metadata</h2>
+            <dl class="space-y-3 text-sm">
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Type</dt><dd class="text-gray-900 text-right">{{ document.document_type.name }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Reference</dt><dd class="text-gray-900 text-right">{{ document.document_reference_number or 'Not set' }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Issuing Body</dt><dd class="text-gray-900 text-right">{{ document.issuing_body or 'Not set' }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Issued</dt><dd class="text-gray-900 text-right">{{ document.issued_at.strftime('%Y-%m-%d') if document.issued_at else 'Not set' }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Expires</dt><dd class="text-gray-900 text-right">{{ document.expires_at.strftime('%Y-%m-%d') if document.expires_at else 'Not set' }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">File</dt><dd class="text-gray-900 text-right">{{ document.original_filename or 'Not set' }}</dd></div>
+            </dl>
+        </div>
+    </div>
+
+    <div class="grid lg:grid-cols-2 gap-6 mb-6">
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <h2 class="text-xl font-semibold text-gray-900 mb-4">Extraction And Risk</h2>
+            {% if extraction_run %}
+            <dl class="space-y-3 text-sm">
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Run Status</dt><dd class="text-gray-900 text-right">{{ extraction_run.status|replace('_', ' ')|title }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Intelligence</dt><dd class="text-gray-900 text-right">{{ extraction_run.document_intelligence_status|replace('_', ' ')|title }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Quality</dt><dd class="text-gray-900 text-right">{{ extraction_run.quality_score if extraction_run.quality_score is not none else 'Not scored' }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Mismatches</dt><dd class="text-gray-900 text-right">{{ mismatch_count }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Expiry Readiness</dt><dd class="text-gray-900 text-right">{{ expiry_readiness.status|replace('_', ' ')|title if expiry_readiness and expiry_readiness.status else 'Not available' }}</dd></div>
+            </dl>
+            {% if risk_flags %}
+            <div class="mt-5 pt-5 border-t">
+                <h3 class="text-sm font-medium text-gray-700 mb-2">Risk Flags</h3>
+                <div class="flex flex-wrap gap-2">
+                    {% for flag in risk_flags %}
+                    <span class="text-xs bg-amber-50 text-amber-800 border border-amber-200 rounded-full px-3 py-1">{{ flag|replace('_', ' ')|title }}</span>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+            {% else %}
+            <p class="text-sm text-gray-600">No extraction run is available for this document.</p>
+            {% endif %}
+        </div>
+
+        <div class="bg-white rounded-xl shadow-sm border overflow-hidden">
+            <div class="px-6 py-4 border-b">
+                <h2 class="text-xl font-semibold text-gray-900">Reconciliation Summary</h2>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Field</th>
+                            <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Extracted</th>
+                            <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y">
+                        {% for row in reconciliation_rows %}
+                        <tr>
+                            <td class="px-5 py-3 text-sm text-gray-900">{{ row.field_label or row.field_name|replace('_', ' ')|title }}</td>
+                            <td class="px-5 py-3 text-sm text-gray-700">{{ row.extracted_value or 'Not extracted' }}</td>
+                            <td class="px-5 py-3 text-sm text-gray-700">{{ row.status|replace('_', ' ')|title }}</td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="3" class="px-6 py-8 text-center text-gray-500">No reconciliation rows available.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="bg-white rounded-xl shadow-sm border overflow-hidden">
+        <div class="px-6 py-4 border-b">
+            <h2 class="text-xl font-semibold text-gray-900">Review History</h2>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Notes</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Reviewer</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Reviewed</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y">
+                    {% for review in review_history %}
+                    <tr>
+                        <td class="px-5 py-4 text-sm text-gray-900">{{ review.status|replace('_', ' ')|title }}</td>
+                        <td class="px-5 py-4 text-sm text-gray-700">{{ review.notes or 'No notes' }}</td>
+                        <td class="px-5 py-4 text-sm text-gray-700">{{ review.reviewer_user.email if review.reviewer_user else 'Unknown' }}</td>
+                        <td class="px-5 py-4 text-sm text-gray-500">{{ review.reviewed_at.strftime('%Y-%m-%d %H:%M') if review.reviewed_at else '' }}</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="4" class="px-6 py-8 text-center text-gray-500">No review decisions have been recorded.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
