@@ -1,0 +1,236 @@
+{% extends "base.html" %}
+
+{% block title %}Commercial Reports - FieldSight Africa{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="mb-8">
+        <a href="{{ url_for('admin.dashboard') }}" class="text-primary hover:underline text-sm">&larr; Back to Admin Dashboard</a>
+        <div class="mt-3 flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
+            <div>
+                <h1 class="text-3xl font-bold text-gray-900">Commercial Reports</h1>
+                <p class="text-gray-600 mt-1">Pipeline, funnel, revenue readiness, and follow-up intelligence.</p>
+            </div>
+            <div class="flex flex-wrap gap-3">
+                <form method="GET" class="flex gap-2">
+                    <label for="window" class="sr-only">Window</label>
+                    <select id="window" name="window" class="rounded-lg border border-gray-300 px-3 py-2">
+                        {% for option in window.options %}
+                        <option value="{{ option.key }}" {% if option.key == window.key %}selected{% endif %}>{{ option.label }}</option>
+                        {% endfor %}
+                    </select>
+                    <button type="submit" class="px-5 py-2 rounded-lg bg-primary text-white hover:bg-secondary">Apply</button>
+                </form>
+                <a href="{{ url_for('admin.commercial_reports_pipeline_csv', window=window.key) }}" class="px-5 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50">Export CSV</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="grid md:grid-cols-4 gap-6 mb-8">
+        {% for item in pipeline_summary %}
+        <a href="{{ item.url }}" class="bg-white rounded-xl shadow-sm border p-6 hover:border-primary">
+            <p class="text-sm text-gray-500">{{ item.label }}</p>
+            <p class="text-3xl font-bold text-gray-900 mt-2">{{ item.count }}</p>
+            <p class="text-sm text-gray-600 mt-1">{{ item.detail }}</p>
+        </a>
+        {% endfor %}
+    </div>
+
+    <div class="grid lg:grid-cols-3 gap-6 mb-8">
+        <section class="bg-white rounded-xl shadow-sm border p-6">
+            <h2 class="text-xl font-semibold text-gray-900 mb-5">Revenue Readiness</h2>
+            <dl class="space-y-4 text-sm">
+                <div class="flex justify-between gap-4">
+                    <dt class="text-gray-600">Active licensed packs</dt>
+                    <dd class="font-semibold text-gray-900">{{ revenue_readiness.active_pack_count }}</dd>
+                </div>
+                <div class="flex justify-between gap-4">
+                    <dt class="text-gray-600">Pack catalogue value</dt>
+                    <dd class="font-semibold text-gray-900">${{ "{:,}".format(revenue_readiness.pack_catalogue_value_usd) }}</dd>
+                </div>
+                <div class="flex justify-between gap-4">
+                    <dt class="text-gray-600">Active subscriptions</dt>
+                    <dd class="font-semibold text-gray-900">{{ revenue_readiness.active_subscription_count }}</dd>
+                </div>
+                <div class="flex justify-between gap-4">
+                    <dt class="text-gray-600">Active licences</dt>
+                    <dd class="font-semibold text-gray-900">{{ revenue_readiness.active_license_count }}</dd>
+                </div>
+                <div class="flex justify-between gap-4">
+                    <dt class="text-gray-600">Active licence value</dt>
+                    <dd class="font-semibold text-gray-900">${{ "{:,}".format(revenue_readiness.license_value_usd) }}</dd>
+                </div>
+                <div class="flex justify-between gap-4">
+                    <dt class="text-gray-600">Conversion-ready requests</dt>
+                    <dd class="font-semibold text-gray-900">{{ revenue_readiness.conversion_ready_count }}</dd>
+                </div>
+                <div class="flex justify-between gap-4">
+                    <dt class="text-gray-600">Fulfilled requests</dt>
+                    <dd class="font-semibold text-gray-900">{{ revenue_readiness.fulfilled_commercial_request_count }}</dd>
+                </div>
+                <div class="flex justify-between gap-4">
+                    <dt class="text-gray-600">Fulfilment rate</dt>
+                    <dd class="font-semibold text-gray-900">{{ revenue_readiness.conversion_rate_percent }}%</dd>
+                </div>
+            </dl>
+        </section>
+
+        <section class="bg-white rounded-xl shadow-sm border p-6">
+            <h2 class="text-xl font-semibold text-gray-900 mb-5">Subscriptions By Plan</h2>
+            <div class="space-y-3">
+                {% for item in revenue_readiness.subscriptions_by_plan %}
+                <div class="flex justify-between gap-4 text-sm">
+                    <span class="text-gray-700">{{ item.label }}</span>
+                    <span class="font-semibold text-gray-900">{{ item.count }}</span>
+                </div>
+                {% else %}
+                <p class="text-sm text-gray-600">No active subscriptions in this window.</p>
+                {% endfor %}
+            </div>
+        </section>
+
+        <section class="bg-white rounded-xl shadow-sm border p-6">
+            <h2 class="text-xl font-semibold text-gray-900 mb-5">Licences By Pack</h2>
+            <div class="space-y-3">
+                {% for item in revenue_readiness.licenses_by_pack %}
+                <div class="flex justify-between gap-4 text-sm">
+                    <span class="text-gray-700">{{ item.label }}</span>
+                    <span class="font-semibold text-gray-900">{{ item.count }}</span>
+                </div>
+                {% else %}
+                <p class="text-sm text-gray-600">No active licences in this window.</p>
+                {% endfor %}
+            </div>
+        </section>
+    </div>
+
+    <div class="grid lg:grid-cols-2 gap-6 mb-8">
+        <section class="bg-white rounded-xl shadow-sm border p-6">
+            <h2 class="text-xl font-semibold text-gray-900 mb-5">Request Funnel</h2>
+            <div class="grid md:grid-cols-2 gap-6">
+                <div>
+                    <h3 class="font-semibold text-gray-900 mb-3">Commercial By Status</h3>
+                    {% for item in request_funnel.commercial_by_status %}
+                    <div class="flex justify-between gap-4 text-sm py-1">
+                        <span class="text-gray-700">{{ item.label|replace('_', ' ')|title }}</span>
+                        <span class="font-semibold text-gray-900">{{ item.count }}</span>
+                    </div>
+                    {% else %}
+                    <p class="text-sm text-gray-600">No commercial requests.</p>
+                    {% endfor %}
+                </div>
+                <div>
+                    <h3 class="font-semibold text-gray-900 mb-3">Commercial By Type</h3>
+                    {% for item in request_funnel.commercial_by_type %}
+                    <div class="flex justify-between gap-4 text-sm py-1">
+                        <span class="text-gray-700">{{ item.label|replace('_', ' ')|title }}</span>
+                        <span class="font-semibold text-gray-900">{{ item.count }}</span>
+                    </div>
+                    {% else %}
+                    <p class="text-sm text-gray-600">No commercial request types.</p>
+                    {% endfor %}
+                </div>
+                <div>
+                    <h3 class="font-semibold text-gray-900 mb-3">Due Diligence By Status</h3>
+                    {% for item in request_funnel.due_diligence_by_status %}
+                    <div class="flex justify-between gap-4 text-sm py-1">
+                        <span class="text-gray-700">{{ item.label|replace('_', ' ')|title }}</span>
+                        <span class="font-semibold text-gray-900">{{ item.count }}</span>
+                    </div>
+                    {% else %}
+                    <p class="text-sm text-gray-600">No due diligence requests.</p>
+                    {% endfor %}
+                </div>
+                <div>
+                    <h3 class="font-semibold text-gray-900 mb-3">Due Diligence By Type</h3>
+                    {% for item in request_funnel.due_diligence_by_type %}
+                    <div class="flex justify-between gap-4 text-sm py-1">
+                        <span class="text-gray-700">{{ item.label|replace('_', ' ')|title }}</span>
+                        <span class="font-semibold text-gray-900">{{ item.count }}</span>
+                    </div>
+                    {% else %}
+                    <p class="text-sm text-gray-600">No due diligence request types.</p>
+                    {% endfor %}
+                </div>
+            </div>
+        </section>
+
+        <section class="bg-white rounded-xl shadow-sm border p-6">
+            <h2 class="text-xl font-semibold text-gray-900 mb-5">Demand Signals</h2>
+            <div class="grid md:grid-cols-2 gap-6">
+                <div>
+                    <h3 class="font-semibold text-gray-900 mb-3">Products</h3>
+                    {% for item in request_funnel.commercial_by_product %}
+                    <div class="flex justify-between gap-4 text-sm py-1">
+                        <span class="text-gray-700">{{ item.label }}</span>
+                        <span class="font-semibold text-gray-900">{{ item.count }}</span>
+                    </div>
+                    {% else %}
+                    <p class="text-sm text-gray-600">No product demand.</p>
+                    {% endfor %}
+                </div>
+                <div>
+                    <h3 class="font-semibold text-gray-900 mb-3">Regions</h3>
+                    {% for item in request_funnel.commercial_by_region %}
+                    <div class="flex justify-between gap-4 text-sm py-1">
+                        <span class="text-gray-700">{{ item.label }}</span>
+                        <span class="font-semibold text-gray-900">{{ item.count }}</span>
+                    </div>
+                    {% else %}
+                    <p class="text-sm text-gray-600">No region demand.</p>
+                    {% endfor %}
+                </div>
+                <div>
+                    <h3 class="font-semibold text-gray-900 mb-3">Crops</h3>
+                    {% for item in request_funnel.commercial_by_crop %}
+                    <div class="flex justify-between gap-4 text-sm py-1">
+                        <span class="text-gray-700">{{ item.label }}</span>
+                        <span class="font-semibold text-gray-900">{{ item.count }}</span>
+                    </div>
+                    {% else %}
+                    <p class="text-sm text-gray-600">No crop demand.</p>
+                    {% endfor %}
+                </div>
+                <div>
+                    <h3 class="font-semibold text-gray-900 mb-3">Dates</h3>
+                    {% for item in request_funnel.commercial_by_date %}
+                    <div class="flex justify-between gap-4 text-sm py-1">
+                        <span class="text-gray-700">{{ item.label }}</span>
+                        <span class="font-semibold text-gray-900">{{ item.count }}</span>
+                    </div>
+                    {% else %}
+                    <p class="text-sm text-gray-600">No date trend.</p>
+                    {% endfor %}
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <section class="bg-white rounded-xl shadow-sm border overflow-hidden">
+        <div class="px-6 py-4 border-b">
+            <h2 class="text-xl font-semibold text-gray-900">Follow-up Queue</h2>
+        </div>
+        <div class="grid lg:grid-cols-4 divide-y lg:divide-y-0 lg:divide-x">
+            {% for queue_name, items in follow_up_queues.items() %}
+            <div class="p-6">
+                <h3 class="font-semibold text-gray-900 mb-4">{{ queue_name|replace('_', ' ')|title }}</h3>
+                <div class="space-y-3">
+                    {% for item in items %}
+                    <a href="{{ item.url }}" class="block rounded-lg border border-gray-200 p-3 hover:border-primary">
+                        <div class="flex items-center justify-between gap-3">
+                            <span class="text-sm font-medium text-gray-900">#{{ item.id }}</span>
+                            <span class="text-xs text-gray-600">{{ item.status }}</span>
+                        </div>
+                        <p class="text-sm text-gray-700 mt-1">{{ item.scope }}</p>
+                        <p class="text-xs text-gray-500 mt-1">{{ item.age_days if item.age_days is not none else 'Unknown' }} days old</p>
+                    </a>
+                    {% else %}
+                    <p class="text-sm text-gray-600">No open follow-up items.</p>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+</div>
+{% endblock %}
