@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+
+{% block title %}Document Access Requests - FieldSight Africa{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="mb-8">
+        <a href="{{ url_for('admin.dashboard') }}" class="text-primary hover:underline text-sm">&larr; Back to Admin Dashboard</a>
+        <h1 class="text-3xl font-bold text-gray-900 mt-3">Document Access Requests</h1>
+        <p class="text-gray-600 mt-1">Captured requests only. This page does not grant document access.</p>
+    </div>
+
+    <form method="GET" class="bg-white rounded-xl shadow-sm border p-5 mb-6">
+        <label for="status" class="block text-sm font-medium text-gray-700 mb-1">Status</label>
+        <div class="flex flex-col sm:flex-row gap-3">
+            <select name="status" id="status" class="rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                <option value="">All statuses</option>
+                {% for status in statuses %}
+                <option value="{{ status }}" {% if selected_status == status %}selected{% endif %}>{{ status|replace('_', ' ')|title }}</option>
+                {% endfor %}
+            </select>
+            <button type="submit" class="bg-primary text-white px-5 py-2 rounded-lg hover:bg-secondary transition">Filter</button>
+        </div>
+    </form>
+
+    <div class="bg-white rounded-xl shadow-sm border overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="w-full">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Request</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">User</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Document</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Purpose</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Created</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y">
+                    {% for access_request in access_requests %}
+                    <tr>
+                        <td class="px-5 py-4 text-sm text-gray-900">{{ access_request.request_type|replace('_', ' ')|title }}</td>
+                        <td class="px-5 py-4 text-sm text-gray-700">{{ access_request.user.email if access_request.user else 'API client' }}</td>
+                        <td class="px-5 py-4 text-sm text-gray-700">
+                            <a href="{{ url_for('admin.document_review_detail', document_id=access_request.actor_document_id) }}" class="text-primary hover:underline">
+                                {{ access_request.actor_document.document_type.name if access_request.actor_document and access_request.actor_document.document_type else 'Document' }}
+                            </a>
+                        </td>
+                        <td class="px-5 py-4 text-sm text-gray-700">{{ access_request.purpose or 'No purpose recorded' }}</td>
+                        <td class="px-5 py-4 text-sm text-gray-700">{{ access_request.status|replace('_', ' ')|title }}</td>
+                        <td class="px-5 py-4 text-sm text-gray-500">{{ access_request.created_at.strftime('%Y-%m-%d %H:%M') if access_request.created_at else '' }}</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="6" class="px-6 py-10 text-center text-gray-500">No access requests found.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

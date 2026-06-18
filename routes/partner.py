@@ -1787,6 +1787,29 @@ def actor_documents(actor_id):
     )
 
 
+@partner_bp.route("/documents/corrections")
+@login_required
+@require_partner_user
+def document_corrections():
+    profile = get_current_partner_profile()
+    documents = (
+        ActorDocument.query.filter(
+            ActorDocument.partner_organization_id == profile.partner_organization_id,
+            ActorDocument.review_status.in_(["needs_correction", "rejected"]),
+            ActorDocument.archived_at.is_(None),
+        )
+        .order_by(ActorDocument.updated_at.desc(), ActorDocument.id.desc())
+        .all()
+    )
+    return render_template(
+        "partner/document_corrections.html",
+        profile=profile,
+        organization=profile.partner_organization,
+        documents=documents,
+        can_correct=can_edit_partner_records(profile),
+    )
+
+
 @partner_bp.route("/actors/<int:actor_id>/documents/new", methods=["GET", "POST"])
 @login_required
 @require_partner_user
@@ -1881,6 +1904,97 @@ def document_detail(document_id):
         latest_extraction_run=latest_extraction_run,
         extraction_rows=latest_reconciliation_rows(latest_extraction_run),
         can_extract=can_edit_partner_records(profile),
+    )
+
+
+@partner_bp.route("/documents/<int:document_id>/correction", methods=["GET", "POST"])
+@login_required
+@require_partner_user
+@require_partner_role(*EDITOR_ROLES)
+def correct_document(document_id):
+    profile = get_current_partner_profile()
+    document = get_partner_document_or_404(document_id, profile)
+    actor = document.market_actor
+    if document.review_status not in {"needs_correction", "rejected"}:
+        flash("Only rejected or needs-correction documents can use the correction workflow.", "warning")
+        return redirect(url_for("partner.document_detail", document_id=document.id))
+
+    if request.method == "POST":
+        errors, values = parse_document_form(actor)
+        correction_notes = clean_form_value("correction_notes")
+        file_storage = request.files.get("file")
+        upload_data = None
+        if file_storage and file_storage.filename:
+            upload_data, upload_errors = validate_document_upload(file_storage)
+            errors.extend(upload_errors)
+        if not correction_notes:
+            errors.append("Correction notes are required.")
+        if errors:
+            for error in errors:
+                flash(error, "error")
+            return render_template(
+                "partner/document_correction_form.html",
+                **document_form_context(profile, actor=actor, document=document),
+                correction_notes=correction_notes,
+            )
+
+        before_values = document_snapshot(document)
+        apply_document_metadata(document, values)
+        new_version_id = None
+        if upload_data:
+            next_version_number = (document.version_number or 1) + 1
+            file_metadata = save_document_upload(actor, document, upload_data, version_number=next_version_number)
+            for key, value in file_metadata.items():
+                setattr(document, key, value)
+            document.version_number = next_version_number
+            document.uploaded_by_user_id = current_user.id
+            version = ActorDocumentVersion(
+                actor_document_id=document.id,
+                version_number=next_version_number,
+                storage_backend=current_app.config.get("DOCUMENT_STORAGE_BACKEND", "local_private"),
+                storage_path=document.storage_path,
+                original_filename=document.original_filename,
+                content_type=document.mime_type,
+                file_size_bytes=document.file_size,
+                checksum_sha256=document.file_hash,
+                uploaded_by_user_id=current_user.id,
+                document_status="submitted",
+            )
+            db.session.add(version)
+            db.session.flush()
+            new_version_id = version.id
+
+        document.document_status = "submitted"
+        document.review_status = "pending"
+        document.verification_status = "submitted"
+        document.review_comments = correction_notes
+        document.reviewed_by_user_id = None
+        document.reviewed_at = None
+        document.is_current_version = True
+        db.session.flush()
+        after_values = document_snapshot(document)
+        add_audit_log(
+            "partner_document_correction_submitted",
+            "actor_document",
+            document.id,
+            before_values=before_values,
+            after_values={
+                "document": after_values,
+                "new_version_id": new_version_id,
+                "correction_notes": correction_notes,
+                "external_access_changed": False,
+            },
+            organization_id=profile.partner_organization_id,
+        )
+        db.session.commit()
+
+        flash("Document correction submitted for admin review.", "success")
+        return redirect(url_for("partner.document_detail", document_id=document.id))
+
+    return render_template(
+        "partner/document_correction_form.html",
+        **document_form_context(profile, actor=actor, document=document),
+        correction_notes="",
     )
 
 

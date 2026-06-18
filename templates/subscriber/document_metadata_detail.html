@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+
+{% block title %}Document Metadata - FieldSight Africa{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="flex items-center justify-between gap-4 mb-8">
+        <div>
+            <a href="{{ url_for('subscriber.document_metadata') }}" class="text-primary hover:underline text-sm">&larr; Back to Metadata</a>
+            <h1 class="text-3xl font-bold text-gray-900 mt-3">{{ metadata.document_type }}</h1>
+            <p class="text-gray-600 mt-1">Verified metadata only | {{ metadata.actor_public_id }}</p>
+        </div>
+        <a href="{{ url_for('subscriber.new_document_access_request', document_id=metadata.document_id) }}" class="bg-primary text-white px-5 py-2 rounded-lg hover:bg-secondary transition">Request Restricted Access</a>
+    </div>
+
+    <div class="rounded-xl bg-blue-50 border border-blue-200 p-5 mb-6 text-sm text-blue-800">
+        No document file, filename, private path, contact detail, or full actor profile is available from this page.
+    </div>
+
+    <div class="grid md:grid-cols-2 gap-6 mb-6">
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <h2 class="text-xl font-semibold text-gray-900 mb-4">Document Metadata</h2>
+            <dl class="space-y-3 text-sm">
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Type</dt><dd class="text-gray-900 text-right">{{ metadata.document_type }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Category</dt><dd class="text-gray-900 text-right">{{ metadata.document_category|replace('_', ' ')|title }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Reference</dt><dd class="text-gray-900 text-right">{{ metadata.reference_number or 'Not set' }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Issuing Body</dt><dd class="text-gray-900 text-right">{{ metadata.issuing_body or 'Not set' }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Issued</dt><dd class="text-gray-900 text-right">{{ metadata.issued_at or 'Not set' }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Expires</dt><dd class="text-gray-900 text-right">{{ metadata.expires_at or 'Not set' }}</dd></div>
+            </dl>
+        </div>
+
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <h2 class="text-xl font-semibold text-gray-900 mb-4">Scope And Readiness</h2>
+            <dl class="space-y-3 text-sm">
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Actor Public ID</dt><dd class="text-gray-900 text-right">{{ metadata.actor_public_id }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Actor Type</dt><dd class="text-gray-900 text-right">{{ metadata.actor_type|replace('_', ' ')|title }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Crop</dt><dd class="text-gray-900 text-right">{{ metadata.crop or 'Not set' }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Commodity</dt><dd class="text-gray-900 text-right">{{ metadata.commodity or 'Not set' }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Region</dt><dd class="text-gray-900 text-right">{{ metadata.region_name or metadata.region_code or 'Not set' }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Verification</dt><dd class="text-emerald-700 text-right">{{ metadata.verification_status|replace('_', ' ')|title }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Publish Status</dt><dd class="text-gray-900 text-right">{{ metadata.publish_status|replace('_', ' ')|title }}</dd></div>
+            </dl>
+        </div>
+    </div>
+
+    <div class="bg-white rounded-xl shadow-sm border p-6">
+        <h2 class="text-xl font-semibold text-gray-900 mb-4">Restricted Access Requests</h2>
+        <p class="text-sm text-gray-600 mb-5">Requests are reviewed separately and do not grant automatic document access.</p>
+        <a href="{{ url_for('subscriber.new_document_access_request', document_id=metadata.document_id) }}" class="inline-flex bg-primary text-white px-5 py-2 rounded-lg hover:bg-secondary transition">Create Request</a>
+    </div>
+</div>
+{% endblock %}

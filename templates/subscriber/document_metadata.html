@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+
+{% block title %}Verified Document Metadata - FieldSight Africa{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="flex items-center justify-between gap-4 mb-8">
+        <div>
+            <h1 class="text-3xl font-bold text-gray-900">Verified Document Metadata</h1>
+            <p class="text-gray-600 mt-1">Governed metadata available under your current entitlement.</p>
+        </div>
+        <a href="{{ url_for('subscriber.new_document_access_request') }}" class="bg-primary text-white px-5 py-2 rounded-lg hover:bg-secondary transition">Request Restricted Access</a>
+    </div>
+
+    <div class="rounded-xl bg-blue-50 border border-blue-200 p-5 mb-6 text-sm text-blue-800">
+        This page shows verified metadata only. Document files, private paths, filenames, contact details, and downloads are not exposed.
+    </div>
+
+    <div class="grid md:grid-cols-3 gap-6 mb-6">
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <p class="text-sm text-gray-500">Visible Metadata</p>
+            <p class="text-3xl font-bold text-gray-900 mt-2">{{ metadata_items|length }}</p>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <p class="text-sm text-gray-500">Blocked By Gates</p>
+            <p class="text-3xl font-bold text-gray-900 mt-2">{{ blocked_count }}</p>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <p class="text-sm text-gray-500">Entitlement</p>
+            <p class="text-2xl font-bold text-gray-900 mt-2">{{ entitlements.access_type|replace('_', ' ')|title }}</p>
+        </div>
+    </div>
+
+    <div class="bg-white rounded-xl shadow-sm border overflow-hidden">
+        <div class="px-6 py-4 border-b">
+            <h2 class="text-xl font-semibold text-gray-900">Metadata Catalogue</h2>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Document Type</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Reference</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Crop</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Region</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Verification</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Action</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y">
+                    {% for item in metadata_items %}
+                    <tr>
+                        <td class="px-5 py-4 text-sm text-gray-900">{{ item.document_type }}</td>
+                        <td class="px-5 py-4 text-sm text-gray-700">{{ item.reference_number or 'Not set' }}</td>
+                        <td class="px-5 py-4 text-sm text-gray-700">{{ item.crop or item.commodity or 'Not set' }}</td>
+                        <td class="px-5 py-4 text-sm text-gray-700">{{ item.region_name or item.region_code or 'Not set' }}</td>
+                        <td class="px-5 py-4 text-sm text-emerald-700">{{ item.verification_status|replace('_', ' ')|title }}</td>
+                        <td class="px-5 py-4 text-sm"><a href="{{ url_for('subscriber.document_metadata_detail', document_id=item.document_id) }}" class="text-primary hover:underline">View</a></td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="6" class="px-6 py-10 text-center text-gray-500">No verified document metadata is available under your current entitlement.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

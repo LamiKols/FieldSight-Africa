@@ -13,6 +13,7 @@ from models import (
     ActorDocument,
     AuditLog,
     DocumentAccessLog,
+    DocumentAccessRequest,
     DocumentExtractionRun,
     DocumentFieldReconciliation,
     DocumentPublishControl,
@@ -721,6 +722,7 @@ def dashboard():
         ActorDocument.archived_at.is_(None),
         ActorDocument.review_status.in_(['pending', 'needs_correction', 'redaction_required']),
     ).count()
+    pending_document_access_requests = DocumentAccessRequest.query.filter_by(status='pending').count()
     
     recent_exports = ExportLog.query.order_by(ExportLog.exported_at.desc()).limit(10).all()
     
@@ -730,6 +732,7 @@ def dashboard():
                            total_datasets=total_datasets,
                            total_exports=total_exports,
                            pending_document_reviews=pending_document_reviews,
+                           pending_document_access_requests=pending_document_access_requests,
                            recent_exports=recent_exports)
 
 
@@ -935,6 +938,23 @@ def document_review_queue():
         selected_extraction_status=selected_extraction_status,
         selected_risk_flag=selected_risk_flag,
         selected_consent_status=selected_consent_status,
+    )
+
+
+@admin_bp.route('/document-access-requests')
+@login_required
+@admin_required
+def document_access_requests():
+    status_filter = request.args.get('status', '').strip()
+    query = DocumentAccessRequest.query
+    if status_filter:
+        query = query.filter_by(status=status_filter)
+    requests = query.order_by(DocumentAccessRequest.created_at.desc(), DocumentAccessRequest.id.desc()).all()
+    return render_template(
+        'admin/document_access_requests.html',
+        access_requests=requests,
+        selected_status=status_filter,
+        statuses=['pending', 'approved', 'rejected', 'cancelled'],
     )
 
 
