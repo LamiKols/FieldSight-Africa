@@ -706,6 +706,57 @@ def new_document_access_request():
     )
 
 
+@subscriber_bp.route('/subscriber/document-access-requests')
+@login_required
+def document_access_requests():
+    requests = (
+        DocumentAccessRequest.query.filter_by(user_id=current_user.id)
+        .order_by(DocumentAccessRequest.created_at.desc(), DocumentAccessRequest.id.desc())
+        .all()
+    )
+    return render_template(
+        'subscriber/document_access_requests.html',
+        access_requests=requests,
+    )
+
+
+@subscriber_bp.route('/subscriber/document-access-requests/<int:request_id>')
+@login_required
+def document_access_request_detail(request_id):
+    access_request = DocumentAccessRequest.query.filter_by(
+        id=request_id,
+        user_id=current_user.id,
+    ).first()
+    if not access_request:
+        abort(404)
+
+    document = access_request.actor_document
+    metadata_allowed = False
+    metadata = {}
+    metadata_reasons = []
+    if document:
+        metadata_allowed, metadata_reasons, publish_control, _extraction_run = document_metadata_access_decision(
+            current_user,
+            document,
+            'subscriber_portal',
+        )
+        if metadata_allowed:
+            metadata = safe_document_metadata_payload(document, 'subscriber_portal', publish_control=publish_control)
+
+    return render_template(
+        'subscriber/document_access_request_detail.html',
+        access_request=access_request,
+        metadata_allowed=metadata_allowed,
+        metadata=metadata,
+        metadata_reasons=metadata_reasons,
+        fulfilment_actions=sorted(
+            access_request.fulfilment_actions,
+            key=lambda action: (action.created_at or datetime.min, action.id or 0),
+            reverse=True,
+        ),
+    )
+
+
 @subscriber_bp.route('/subscriber/products')
 def products():
     entitlements = get_user_entitlements(current_user) if current_user.is_authenticated else None

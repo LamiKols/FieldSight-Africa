@@ -1,0 +1,195 @@
+{% extends "base.html" %}
+
+{% block title %}Due Diligence Request #{{ access_request.id }} - FieldSight Africa{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="mb-8">
+        <a href="{{ url_for('admin.due_diligence_requests') }}" class="text-primary hover:underline text-sm">&larr; Back to Due Diligence Requests</a>
+        <div class="mt-3 flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+            <div>
+                <h1 class="text-3xl font-bold text-gray-900">Due Diligence Request #{{ access_request.id }}</h1>
+                <p class="text-gray-600 mt-1">{{ access_request.request_type|replace('_', ' ')|title }} for {{ access_request.organization_name or 'requesting organization' }}</p>
+            </div>
+            <span class="inline-flex px-3 py-1 rounded-full bg-amber-100 text-amber-800 text-sm font-medium">
+                {{ status_labels.get(access_request.status, access_request.status) }}
+            </span>
+        </div>
+    </div>
+
+    <div class="grid lg:grid-cols-3 gap-6 mb-8">
+        <section class="bg-white rounded-xl shadow-sm border p-6 lg:col-span-2">
+            <h2 class="text-xl font-semibold text-gray-900 mb-5">Request Context</h2>
+            <dl class="grid md:grid-cols-2 gap-4 text-sm">
+                <div>
+                    <dt class="text-gray-500">Requester</dt>
+                    <dd class="text-gray-900 font-medium">{{ access_request.organization_name or ('User #' ~ access_request.user_id) }}</dd>
+                </div>
+                <div>
+                    <dt class="text-gray-500">Channel</dt>
+                    <dd class="text-gray-900 font-medium">{{ access_request.request_channel|replace('_', ' ')|title if access_request.request_channel else 'Subscriber Portal' }}</dd>
+                </div>
+                <div>
+                    <dt class="text-gray-500">Document Type</dt>
+                    <dd class="text-gray-900 font-medium">{{ safe_metadata.document_type or 'Document metadata' }}</dd>
+                </div>
+                <div>
+                    <dt class="text-gray-500">Reference</dt>
+                    <dd class="text-gray-900 font-medium">{{ safe_metadata.reference_number or 'No reference number' }}</dd>
+                </div>
+                <div>
+                    <dt class="text-gray-500">Actor</dt>
+                    <dd class="text-gray-900 font-medium">{{ safe_metadata.actor_public_id or 'Opaque actor ID unavailable' }} / {{ safe_metadata.actor_type or 'actor' }}</dd>
+                </div>
+                <div>
+                    <dt class="text-gray-500">Scope</dt>
+                    <dd class="text-gray-900 font-medium">{{ safe_metadata.region_code or 'Any region' }} / {{ safe_metadata.crop or safe_metadata.commodity or 'Any crop' }}</dd>
+                </div>
+            </dl>
+            <div class="mt-5">
+                <h3 class="text-sm font-medium text-gray-700 mb-2">Purpose</h3>
+                <p class="text-sm text-gray-700 whitespace-pre-line">{{ access_request.purpose or 'No purpose recorded.' }}</p>
+            </div>
+        </section>
+
+        <section class="bg-white rounded-xl shadow-sm border p-6">
+            <h2 class="text-xl font-semibold text-gray-900 mb-5">Decision Workflow</h2>
+            <form method="POST" action="{{ url_for('admin.due_diligence_request_decision', request_id=access_request.id) }}" class="space-y-4">
+                <div>
+                    <label for="status" class="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                    <select id="status" name="status" class="w-full rounded-lg border border-gray-300 px-3 py-2">
+                        {% for status in status_options %}
+                        <option value="{{ status }}" {% if access_request.status == status %}selected{% endif %}>{{ status_labels.get(status, status) }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label for="review_notes" class="block text-sm font-medium text-gray-700 mb-1">Decision Notes</label>
+                    <textarea id="review_notes" name="review_notes" rows="5" class="w-full rounded-lg border border-gray-300 px-3 py-2">{{ access_request.review_notes or '' }}</textarea>
+                </div>
+                <p class="text-xs text-gray-600">Approval rechecks metadata entitlement, consent, redaction, and publish readiness. No file access is created by this decision.</p>
+                <button type="submit" class="w-full px-5 py-2 rounded-lg bg-primary text-white hover:bg-secondary">Save Decision</button>
+            </form>
+        </section>
+    </div>
+
+    <div class="grid lg:grid-cols-3 gap-6 mb-8">
+        <section class="bg-white rounded-xl shadow-sm border p-6">
+            <h2 class="text-xl font-semibold text-gray-900 mb-5">Visibility Separation</h2>
+            <div class="space-y-4 text-sm">
+                <div class="rounded-lg border p-4">
+                    <p class="font-medium text-gray-900">{{ visibility_labels.metadata_only }}</p>
+                    <p class="text-gray-600 mt-1">{{ 'Allowed' if metadata_allowed else 'Blocked' }}</p>
+                    <p class="text-xs text-gray-500 mt-2">{{ metadata_control.publish_target if metadata_control else 'subscriber_portal_metadata' }} / {{ metadata_control.status if metadata_control else 'not evaluated' }}</p>
+                </div>
+                <div class="rounded-lg border p-4">
+                    <p class="font-medium text-gray-900">{{ visibility_labels.redacted_document_candidate }}</p>
+                    <p class="text-gray-600 mt-1">{{ redacted_control.status if redacted_control else 'not evaluated' }}</p>
+                </div>
+                <div class="rounded-lg border p-4">
+                    <p class="font-medium text-gray-900">{{ visibility_labels.full_document_restricted_candidate }}</p>
+                    <p class="text-gray-600 mt-1">{{ full_control.status if full_control else 'not evaluated' }}</p>
+                </div>
+            </div>
+        </section>
+
+        <section class="bg-white rounded-xl shadow-sm border p-6">
+            <h2 class="text-xl font-semibold text-gray-900 mb-5">Governance Gates</h2>
+            <dl class="space-y-3 text-sm">
+                <div class="flex justify-between gap-4">
+                    <dt class="text-gray-600">Metadata entitlement</dt>
+                    <dd class="font-medium {{ 'text-green-700' if metadata_allowed else 'text-red-700' }}">{{ 'Pass' if metadata_allowed else 'Blocked' }}</dd>
+                </div>
+                <div class="flex justify-between gap-4">
+                    <dt class="text-gray-600">Requested target</dt>
+                    <dd class="font-medium {{ 'text-green-700' if target_allowed else 'text-red-700' }}">{{ 'Pass' if target_allowed else 'Blocked' }}</dd>
+                </div>
+                <div class="flex justify-between gap-4">
+                    <dt class="text-gray-600">Subscriber consent channel</dt>
+                    <dd class="font-medium {{ 'text-green-700' if consent_ok else 'text-red-700' }}">{{ 'Pass' if consent_ok else 'Blocked' }}</dd>
+                </div>
+                <div class="flex justify-between gap-4">
+                    <dt class="text-gray-600">Buyer consent channel</dt>
+                    <dd class="font-medium {{ 'text-green-700' if buyer_consent_ok else 'text-red-700' }}">{{ 'Pass' if buyer_consent_ok else 'Blocked' }}</dd>
+                </div>
+                <div class="flex justify-between gap-4">
+                    <dt class="text-gray-600">Redaction status</dt>
+                    <dd class="font-medium text-gray-900">{{ document.redaction_status if document else 'unknown' }}</dd>
+                </div>
+            </dl>
+            <div class="mt-5">
+                <h3 class="text-sm font-medium text-gray-700 mb-2">Blocking Notes</h3>
+                <ul class="space-y-2 text-sm text-gray-600">
+                    {% for reason in metadata_reasons %}
+                    <li>{{ reason }}</li>
+                    {% endfor %}
+                    <li>{{ target_reason }}</li>
+                </ul>
+            </div>
+        </section>
+
+        <section class="bg-white rounded-xl shadow-sm border p-6">
+            <h2 class="text-xl font-semibold text-gray-900 mb-5">Safe Fulfilment</h2>
+            <form method="POST" action="{{ url_for('admin.due_diligence_request_fulfilment', request_id=access_request.id) }}" class="space-y-4">
+                <div>
+                    <label for="action_type" class="block text-sm font-medium text-gray-700 mb-1">Action</label>
+                    <select id="action_type" name="action_type" class="w-full rounded-lg border border-gray-300 px-3 py-2">
+                        {% for action_type in fulfilment_action_types %}
+                        <option value="{{ action_type }}">{{ fulfilment_labels.get(action_type, action_type) }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label for="visibility_level" class="block text-sm font-medium text-gray-700 mb-1">Visibility Level</label>
+                    <select id="visibility_level" name="visibility_level" class="w-full rounded-lg border border-gray-300 px-3 py-2">
+                        {% for code, label in visibility_labels.items() %}
+                        <option value="{{ code }}">{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label for="notes" class="block text-sm font-medium text-gray-700 mb-1">Fulfilment Notes</label>
+                    <textarea id="notes" name="notes" rows="4" class="w-full rounded-lg border border-gray-300 px-3 py-2"></textarea>
+                </div>
+                <p class="text-xs text-gray-600">Fulfilment records an auditable action only. It does not expose files, storage paths, filenames, hashes, or download links.</p>
+                <button type="submit" class="w-full px-5 py-2 rounded-lg bg-primary text-white hover:bg-secondary">Record Fulfilment</button>
+            </form>
+        </section>
+    </div>
+
+    <div class="grid lg:grid-cols-2 gap-6">
+        <section class="bg-white rounded-xl shadow-sm border overflow-hidden">
+            <div class="px-6 py-4 border-b">
+                <h2 class="text-xl font-semibold text-gray-900">Fulfilment History</h2>
+            </div>
+            <div class="divide-y">
+                {% for action in fulfilment_history %}
+                <div class="px-6 py-4 text-sm">
+                    <p class="font-medium text-gray-900">{{ fulfilment_labels.get(action.action_type, action.action_type) }} - {{ action.status|title }}</p>
+                    <p class="text-gray-600 mt-1">{{ action.notes or 'No notes recorded.' }}</p>
+                    <p class="text-xs text-gray-500 mt-2">{{ action.visibility_level|replace('_', ' ')|title }} / {{ action.created_at.strftime('%Y-%m-%d %H:%M') if action.created_at else '' }}</p>
+                </div>
+                {% else %}
+                <p class="px-6 py-8 text-center text-gray-500">No fulfilment actions recorded yet.</p>
+                {% endfor %}
+            </div>
+        </section>
+
+        <section class="bg-white rounded-xl shadow-sm border overflow-hidden">
+            <div class="px-6 py-4 border-b">
+                <h2 class="text-xl font-semibold text-gray-900">Review History</h2>
+            </div>
+            <div class="divide-y">
+                {% for event in review_history %}
+                <div class="px-6 py-4 text-sm">
+                    <p class="font-medium text-gray-900">{{ event.action }}</p>
+                    <p class="text-gray-600 mt-1">{{ event.user.email if event.user else 'Admin' }} - {{ event.created_at.strftime('%Y-%m-%d %H:%M') if event.created_at else '' }}</p>
+                </div>
+                {% else %}
+                <p class="px-6 py-8 text-center text-gray-500">No due diligence review events recorded yet.</p>
+                {% endfor %}
+            </div>
+        </section>
+    </div>
+</div>
+{% endblock %}
