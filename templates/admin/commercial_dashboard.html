@@ -8,6 +8,7 @@
         <a href="{{ url_for('admin.dashboard') }}" class="text-primary hover:underline text-sm">&larr; Back to Admin Dashboard</a>
         <h1 class="text-3xl font-bold text-gray-900 mt-3">Commercial Dashboard</h1>
         <p class="text-gray-600 mt-1">Commercial packaging readiness, requests, API clients, and gated-access activity.</p>
+        <a href="{{ url_for('admin.commercial_requests') }}" class="inline-block mt-4 px-5 py-2 rounded-lg bg-primary text-white hover:bg-secondary">Open Request Queue</a>
     </div>
 
     <div class="grid md:grid-cols-5 gap-6 mb-8">
@@ -77,6 +78,7 @@
                             <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">User</th>
                             <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Scope</th>
                             <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                            <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Action</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y">
@@ -86,9 +88,10 @@
                             <td class="px-5 py-4 text-sm text-gray-700">{{ commercial_request.user.email if commercial_request.user else 'Unknown' }}</td>
                             <td class="px-5 py-4 text-sm text-gray-700">{{ commercial_request.requested_product or commercial_request.dataset_code or commercial_request.region_code or commercial_request.crop_name or 'General' }}</td>
                             <td class="px-5 py-4 text-sm text-gray-700">{{ commercial_request.status|replace('_', ' ')|title }}</td>
+                            <td class="px-5 py-4 text-sm"><a href="{{ url_for('admin.commercial_request_detail', request_id=commercial_request.id) }}" class="text-primary hover:underline">Open</a></td>
                         </tr>
                         {% else %}
-                        <tr><td colspan="4" class="px-6 py-8 text-center text-gray-500">No commercial requests.</td></tr>
+                        <tr><td colspan="5" class="px-6 py-8 text-center text-gray-500">No commercial requests.</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>

@@ -170,8 +170,17 @@ COMMERCIAL_REQUEST_STATUSES = [
     "pending",
     "in_review",
     "contacted",
+    "approved_for_fulfilment",
+    "rejected",
     "closed",
     "cancelled",
+]
+
+COMMERCIAL_FULFILMENT_ACTION_TYPES = [
+    "api_client_setup",
+    "live_intelligence_access",
+    "upgrade_followup",
+    "manual_note",
 ]
 
 CONSENT_STATUSES = [
@@ -1111,6 +1120,25 @@ class CommercialRequest(TimestampMixin, db.Model):
 
     user = db.relationship('User', foreign_keys=[user_id], backref='commercial_requests')
     reviewed_by_user = db.relationship('User', foreign_keys=[reviewed_by_user_id], backref='reviewed_commercial_requests')
+
+
+class CommercialFulfilmentAction(TimestampMixin, db.Model):
+    __tablename__ = 'commercial_fulfilment_actions'
+
+    id = db.Column(db.Integer, primary_key=True)
+    commercial_request_id = db.Column(db.Integer, db.ForeignKey('commercial_requests.id'), nullable=False)
+    action_type = db.Column(db.String(80), nullable=False)
+    status = db.Column(db.String(50), default='recorded')
+    notes = db.Column(db.Text)
+    performed_by_user_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+    resulting_api_client_id = db.Column(db.Integer, db.ForeignKey('api_clients.id'))
+    resulting_live_intelligence_access_id = db.Column(db.Integer, db.ForeignKey('live_intelligence_access.id'))
+    metadata_json = db.Column(db.JSON, default=dict)
+
+    commercial_request = db.relationship('CommercialRequest', backref='fulfilment_actions')
+    performed_by_user = db.relationship('User', foreign_keys=[performed_by_user_id], backref='commercial_fulfilment_actions')
+    resulting_api_client = db.relationship('ApiClient', backref='commercial_fulfilment_actions')
+    resulting_live_intelligence_access = db.relationship('LiveIntelligenceAccess', backref='commercial_fulfilment_actions')
 
 
 class ActorConsentRecord(TimestampMixin, db.Model):
