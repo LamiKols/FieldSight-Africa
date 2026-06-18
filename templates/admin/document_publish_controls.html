@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+
+{% block title %}Document Publish Controls - FieldSight Africa{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="flex items-center justify-between gap-4 mb-8">
+        <div>
+            <a href="{{ url_for('admin.document_review_detail', document_id=document.id) }}" class="text-primary hover:underline text-sm">&larr; Back to Review Detail</a>
+            <h1 class="text-3xl font-bold text-gray-900 mt-3">Publish Controls</h1>
+            <p class="text-gray-600 mt-1">{{ document.title }} | {{ actor.name }} | {{ partner_organization.name }}</p>
+        </div>
+        <div class="flex flex-wrap gap-3">
+            <a href="{{ url_for('admin.document_redaction_controls', document_id=document.id) }}" class="border border-primary text-primary px-5 py-2 rounded-lg hover:bg-primary hover:text-white transition">Redaction</a>
+            <a href="{{ url_for('admin.preview_document', document_id=document.id) }}" class="bg-primary text-white px-5 py-2 rounded-lg hover:bg-secondary transition">Preview</a>
+        </div>
+    </div>
+
+    <div class="rounded-xl bg-blue-50 border border-blue-200 p-5 mb-6 text-sm text-blue-800">
+        These controls only record readiness or eligibility for later controlled publishing phases. They do not create subscriber access, API output, buyer access, paid access, public links, or document downloads.
+    </div>
+
+    {% if consent.warning %}
+    <div class="rounded-xl bg-amber-50 border border-amber-200 p-5 mb-6 text-sm text-amber-800">
+        {{ consent.warning }}
+    </div>
+    {% endif %}
+
+    <div class="grid lg:grid-cols-4 gap-6 mb-6">
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <h2 class="text-lg font-semibold text-gray-900 mb-3">Review</h2>
+            <p class="text-2xl font-bold text-gray-900">{{ document.review_status|replace('_', ' ')|title }}</p>
+            <p class="text-sm text-gray-500 mt-1">{{ document.document_status|replace('_', ' ')|title }}</p>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <h2 class="text-lg font-semibold text-gray-900 mb-3">Verification</h2>
+            <p class="text-2xl font-bold text-gray-900">{{ document.verification_status|replace('_', ' ')|title }}</p>
+            <p class="text-sm text-gray-500 mt-1">Admin controlled</p>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <h2 class="text-lg font-semibold text-gray-900 mb-3">Redaction</h2>
+            <p class="text-2xl font-bold text-gray-900">{{ document.redaction_status|replace('_', ' ')|title }}</p>
+            <p class="text-sm text-gray-500 mt-1">{{ 'Sensitive' if document.document_type.sensitive else 'Non-sensitive' }}</p>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <h2 class="text-lg font-semibold text-gray-900 mb-3">Extraction</h2>
+            <p class="text-2xl font-bold text-gray-900">{{ extraction_run.status|replace('_', ' ')|title if extraction_run else 'Missing' }}</p>
+            <p class="text-sm text-gray-500 mt-1">{{ reconciliation_pending_count }} pending reconciliation row{{ '' if reconciliation_pending_count == 1 else 's' }}</p>
+        </div>
+    </div>
+
+    <form method="POST" action="{{ url_for('admin.document_publish_controls_evaluate', document_id=document.id) }}" class="mb-6">
+        <button type="submit" class="bg-primary text-white px-5 py-2 rounded-lg hover:bg-secondary transition">Evaluate All Targets</button>
+    </form>
+
+    <div class="space-y-6">
+        {% for item in publish_targets %}
+        <div class="bg-white rounded-xl shadow-sm border overflow-hidden">
+            <div class="px-6 py-5 border-b flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+                <div>
+                    <h2 class="text-xl font-semibold text-gray-900">{{ item.target.label }}</h2>
+                    <p class="text-sm text-gray-600 mt-1">{{ item.target.description }}</p>
+                    <p class="text-xs text-gray-500 mt-2">Channel: {{ item.target.channel|replace('_', ' ')|title }} | Category: {{ item.document_category|replace('_', ' ')|title }}</p>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                    <span class="text-xs uppercase tracking-wide rounded-full px-3 py-1 border {{ 'bg-emerald-50 text-emerald-700 border-emerald-200' if item.computed_status == 'ready' else 'bg-red-50 text-red-700 border-red-200' }}">Computed: {{ item.computed_status|replace('_', ' ')|title }}</span>
+                    <span class="text-xs uppercase tracking-wide rounded-full px-3 py-1 border bg-gray-50 text-gray-700 border-gray-200">Stored: {{ item.stored_status|replace('_', ' ')|title }}</span>
+                </div>
+            </div>
+
+            <div class="grid lg:grid-cols-3 gap-0">
+                <div class="lg:col-span-2 overflow-x-auto">
+                    <table class="w-full">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Check</th>
+                                <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                                <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Message</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y">
+                            {% for check in item.checks %}
+                            <tr>
+                                <td class="px-5 py-3 text-sm text-gray-900">{{ check.label }}</td>
+                                <td class="px-5 py-3 text-sm">
+                                    <span class="rounded-full px-3 py-1 text-xs border {{ 'bg-emerald-50 text-emerald-700 border-emerald-200' if check.status == 'pass' else 'bg-red-50 text-red-700 border-red-200' if check.status == 'fail' else 'bg-gray-50 text-gray-700 border-gray-200' }}">{{ check.status|replace('_', ' ')|title }}</span>
+                                </td>
+                                <td class="px-5 py-3 text-sm text-gray-700">{{ check.message }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="border-t lg:border-t-0 lg:border-l p-6">
+                    {% if item.blocking_reasons %}
+                    <h3 class="text-sm font-medium text-gray-700 mb-3">Blocking Reasons</h3>
+                    <ul class="space-y-2 text-sm text-red-700 mb-5">
+                        {% for reason in item.blocking_reasons %}
+                        <li>{{ reason }}</li>
+                        {% endfor %}
+                    </ul>
+                    {% else %}
+                    <div class="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800 mb-5">All required readiness checks currently pass.</div>
+                    {% endif %}
+
+                    <form method="POST" action="{{ url_for('admin.document_publish_controls_decision', document_id=document.id) }}" class="space-y-4">
+                        <input type="hidden" name="publish_target" value="{{ item.target.code }}">
+                        <div>
+                            <label for="decision_{{ item.target.code }}" class="block text-sm font-medium text-gray-700 mb-1">Decision</label>
+                            <select name="decision" id="decision_{{ item.target.code }}" required class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                                <option value="evaluate">Re-evaluate</option>
+                                <option value="mark_ready">Mark Ready</option>
+                                <option value="mark_blocked">Mark Blocked</option>
+                                <option value="waive_high_risk_flags">Waive High-Risk Flags</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="decision_notes_{{ item.target.code }}" class="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+                            <textarea name="decision_notes" id="decision_notes_{{ item.target.code }}" rows="3" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">{{ item.control.notes if item.control else '' }}</textarea>
+                        </div>
+                        <button type="submit" class="w-full bg-primary text-white px-5 py-2 rounded-lg hover:bg-secondary transition">Save Target Decision</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

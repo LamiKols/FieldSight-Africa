@@ -10,7 +10,11 @@
             <h1 class="text-3xl font-bold text-gray-900 mt-3">{{ document.title }}</h1>
             <p class="text-gray-600 mt-1">{{ actor.name }} | {{ partner_organization.name }} | v{{ document.version_number or 1 }}</p>
         </div>
-        <a href="{{ url_for('admin.preview_document', document_id=document.id) }}" class="bg-primary text-white px-5 py-2 rounded-lg hover:bg-secondary transition">Preview</a>
+        <div class="flex flex-wrap gap-3">
+            <a href="{{ url_for('admin.preview_document', document_id=document.id) }}" class="bg-primary text-white px-5 py-2 rounded-lg hover:bg-secondary transition">Preview</a>
+            <a href="{{ url_for('admin.document_redaction_controls', document_id=document.id) }}" class="border border-primary text-primary px-5 py-2 rounded-lg hover:bg-primary hover:text-white transition">Redaction</a>
+            <a href="{{ url_for('admin.document_publish_controls', document_id=document.id) }}" class="border border-gray-300 text-gray-700 px-5 py-2 rounded-lg hover:border-primary hover:text-primary transition">Publish Controls</a>
+        </div>
     </div>
 
     <div class="rounded-xl bg-blue-50 border border-blue-200 p-5 mb-6 text-sm text-blue-800">

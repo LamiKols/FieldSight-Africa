@@ -120,6 +120,34 @@ DOCUMENT_RECONCILIATION_STATUSES = [
     "manually_overridden",
 ]
 
+DOCUMENT_REDACTION_STATUSES = [
+    "not_redacted",
+    "redaction_required",
+    "not_required",
+    "required",
+    "in_progress",
+    "completed",
+    "waived",
+    "failed",
+]
+
+DOCUMENT_PUBLISH_TARGETS = [
+    "verified_metadata",
+    "licensed_data_pack_metadata",
+    "live_intelligence_metadata",
+    "subscriber_portal_metadata",
+    "api_metadata",
+    "redacted_document_candidate",
+    "full_document_restricted_candidate",
+]
+
+DOCUMENT_PUBLISH_CONTROL_STATUSES = [
+    "not_evaluated",
+    "blocked",
+    "ready",
+    "waived",
+]
+
 CONSENT_STATUSES = [
     "not_requested",
     "requested",
@@ -946,6 +974,29 @@ class DocumentReview(TimestampMixin, db.Model):
     actor_document = db.relationship('ActorDocument', backref='reviews')
     actor_document_version = db.relationship('ActorDocumentVersion', backref='reviews')
     reviewer_user = db.relationship('User', backref='document_reviews')
+
+
+class DocumentPublishControl(TimestampMixin, db.Model):
+    __tablename__ = 'document_publish_controls'
+
+    id = db.Column(db.Integer, primary_key=True)
+    actor_document_id = db.Column(db.Integer, db.ForeignKey('actor_documents.id'), nullable=False)
+    publish_target = db.Column(db.String(80), nullable=False)
+    status = db.Column(db.String(50), default='not_evaluated', nullable=False)
+    readiness_checks_json = db.Column(db.JSON, default=list)
+    blocking_reasons_json = db.Column(db.JSON, default=list)
+    admin_decision = db.Column(db.String(80), default='not_evaluated')
+    notes = db.Column(db.Text)
+    decided_by_user_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+    decided_at = db.Column(db.DateTime)
+    last_evaluated_at = db.Column(db.DateTime)
+
+    actor_document = db.relationship('ActorDocument', backref='publish_controls')
+    decided_by_user = db.relationship('User', backref='document_publish_control_decisions')
+
+    __table_args__ = (
+        db.UniqueConstraint('actor_document_id', 'publish_target', name='unique_document_publish_control_target'),
+    )
 
 
 class DocumentAccessLog(db.Model):
