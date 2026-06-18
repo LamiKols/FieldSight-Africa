@@ -15,8 +15,12 @@ from models import (
     DocumentAccessLog,
     DocumentExtractionRun,
     DocumentFieldReconciliation,
+    DocumentPublishControl,
     DocumentReview,
     DocumentType,
+    DOCUMENT_PUBLISH_CONTROL_STATUSES,
+    DOCUMENT_PUBLISH_TARGETS,
+    DOCUMENT_REDACTION_STATUSES,
     MarketActor,
     PartnerOrganization,
     db,
@@ -96,6 +100,91 @@ EXTERNAL_DOCUMENT_REVIEW_CHANNELS = [
     'api',
     'approved_buyer_due_diligence',
 ]
+
+DOCUMENT_REDACTION_STATUS_OPTIONS = [
+    ('not_required', 'Not Required'),
+    ('required', 'Required'),
+    ('in_progress', 'In Progress'),
+    ('completed', 'Completed'),
+    ('waived', 'Waived'),
+    ('failed', 'Failed'),
+    ('not_redacted', 'Legacy: Not Redacted'),
+    ('redaction_required', 'Legacy: Redaction Required'),
+]
+
+DOCUMENT_PUBLISH_TARGET_CONFIG = [
+    {
+        'code': 'verified_metadata',
+        'label': 'Verified Metadata',
+        'description': 'Internal verified document metadata eligibility for future controlled publish flows.',
+        'channel': 'admin_review',
+        'requires_file': False,
+        'requires_redaction': False,
+    },
+    {
+        'code': 'licensed_data_pack_metadata',
+        'label': 'Licensed Data Pack Metadata',
+        'description': 'Eligibility for future licensed data pack metadata inclusion.',
+        'channel': 'licensed_data_pack',
+        'requires_file': False,
+        'requires_redaction': False,
+    },
+    {
+        'code': 'live_intelligence_metadata',
+        'label': 'Live Intelligence Metadata',
+        'description': 'Eligibility for future live intelligence metadata inclusion.',
+        'channel': 'live_intelligence',
+        'requires_file': False,
+        'requires_redaction': False,
+    },
+    {
+        'code': 'subscriber_portal_metadata',
+        'label': 'Subscriber Portal Metadata',
+        'description': 'Eligibility for future subscriber-facing document metadata.',
+        'channel': 'subscriber_portal',
+        'requires_file': False,
+        'requires_redaction': False,
+    },
+    {
+        'code': 'api_metadata',
+        'label': 'API Metadata',
+        'description': 'Eligibility for future API document metadata output.',
+        'channel': 'api',
+        'requires_file': False,
+        'requires_redaction': False,
+    },
+    {
+        'code': 'redacted_document_candidate',
+        'label': 'Redacted Document Candidate',
+        'description': 'Eligibility marker for a future redacted document access workflow.',
+        'channel': 'subscriber_portal',
+        'requires_file': True,
+        'requires_redaction': True,
+    },
+    {
+        'code': 'full_document_restricted_candidate',
+        'label': 'Full Document Restricted Candidate',
+        'description': 'Eligibility marker for future approved buyer due-diligence access.',
+        'channel': 'approved_buyer_due_diligence',
+        'requires_file': True,
+        'requires_redaction': True,
+    },
+]
+
+DOCUMENT_PUBLISH_TARGET_CONFIG_BY_CODE = {
+    config['code']: config
+    for config in DOCUMENT_PUBLISH_TARGET_CONFIG
+}
+
+DOCUMENT_HIGH_RISK_FLAGS = {
+    'expired_document',
+    'metadata_mismatch',
+    'missing_reference_number',
+    'missing_issuing_body',
+    'no_fields_extracted',
+}
+
+REDACTION_CLEAR_STATUSES = {'not_required', 'completed', 'waived'}
 
 
 def admin_required(f):
@@ -229,6 +318,306 @@ def document_admin_review_context(document):
         'expiry_readiness': expiry_readiness,
         'reconciliation_pending_count': len([row for row in reconciliation_rows if row.status == 'pending']),
     }
+
+
+def document_publish_control_snapshot(control):
+    if not control:
+        return None
+    return {
+        'id': control.id,
+        'actor_document_id': control.actor_document_id,
+        'publish_target': control.publish_target,
+        'status': control.status,
+        'admin_decision': control.admin_decision,
+        'notes': control.notes,
+        'blocking_reasons_json': control.blocking_reasons_json or [],
+        'decided_by_user_id': control.decided_by_user_id,
+        'decided_at': control.decided_at.isoformat() if control.decided_at else None,
+        'last_evaluated_at': control.last_evaluated_at.isoformat() if control.last_evaluated_at else None,
+    }
+
+
+def add_publish_check(checks, blocking_reasons, blocking_keys, key, label, passed, message, required=True, status=None):
+    check_status = status or ('pass' if passed else ('fail' if required else 'warning'))
+    check = {
+        'key': key,
+        'label': label,
+        'status': check_status,
+        'required': required,
+        'message': message,
+    }
+    checks.append(check)
+    if required and check_status == 'fail':
+        blocking_reasons.append(message)
+        blocking_keys.append(key)
+
+
+def document_private_file_exists(document, version=None):
+    storage_path, _download_name, _mime_type, _extension = document_version_file_metadata(document, version=version)
+    if not storage_path:
+        return False
+    try:
+        file_path = resolve_document_storage_path(storage_path)
+    except Exception:
+        return False
+    return file_path.exists() and file_path.is_file()
+
+
+def normalized_redaction_status(document):
+    return document.redaction_status or 'not_redacted'
+
+
+def redaction_is_acceptable_for_target(document, target_code, target_config):
+    redaction_status = normalized_redaction_status(document)
+    document_is_sensitive = bool(document.document_type and document.document_type.sensitive)
+    redaction_required = bool(target_config['requires_redaction'] or document_is_sensitive)
+
+    if not redaction_required:
+        return True, 'Redaction is not required for this non-sensitive metadata target.'
+    if target_code == 'redacted_document_candidate':
+        if redaction_status == 'completed':
+            return True, 'Redaction is completed for this redacted document candidate.'
+        return False, 'Redaction must be completed before this document can be marked as a redacted document candidate.'
+    if redaction_status in REDACTION_CLEAR_STATUSES:
+        return True, 'Redaction status is acceptable for this target.'
+    return False, 'Redaction is required, in progress, failed, or not yet resolved for this target.'
+
+
+def extraction_is_acceptable(extraction_run, reconciliation_rows):
+    if not extraction_run:
+        return False, 'No extraction run exists for this document.'
+    if extraction_run.status != 'completed':
+        return False, 'Latest extraction run is not completed.'
+    if extraction_run.document_intelligence_status not in {'extracted', 'reconciled'}:
+        return False, 'Document intelligence status is not extracted or reconciled.'
+    pending_count = len([row for row in reconciliation_rows if row.status == 'pending'])
+    if pending_count:
+        return False, f'{pending_count} reconciliation row(s) are still pending.'
+    return True, 'Extraction and reconciliation are acceptable.'
+
+
+def expiry_is_acceptable(document, extraction_run):
+    today = datetime.utcnow().date()
+    if document.expires_at and document.expires_at < today:
+        return False, 'Document expiry date is in the past.'
+    if document.document_type and document.document_type.requires_expiry_date and not document.expires_at:
+        return False, 'This document type requires an expiry date.'
+
+    expiry_readiness = extraction_run.expiry_renewal_json if extraction_run and extraction_run.expiry_renewal_json else {}
+    if expiry_readiness.get('status') == 'expired':
+        return False, 'Extraction expiry readiness marks this document as expired.'
+    return True, 'Document expiry readiness is acceptable.'
+
+
+def evaluate_publish_readiness(document, target_code):
+    target_config = DOCUMENT_PUBLISH_TARGET_CONFIG_BY_CODE.get(target_code)
+    if not target_config:
+        abort(404)
+
+    checks = []
+    blocking_reasons = []
+    blocking_keys = []
+    actor = document.market_actor
+    document_category = consent_document_category_for_document_type(document.document_type)
+    active_consent = get_active_actor_consent(actor)
+    consent_document_categories = active_consent.permitted_document_categories_json if active_consent else []
+    consent_channels = active_consent.sharing_channels_json if active_consent else []
+    extraction_run = latest_document_extraction_run(document)
+    reconciliation_rows = reconciliation_rows_for_run(extraction_run)
+    version = current_document_version(document)
+
+    add_publish_check(
+        checks,
+        blocking_reasons,
+        blocking_keys,
+        'active_consent',
+        'Active actor consent',
+        active_consent is not None,
+        'Active actor consent exists.' if active_consent else 'No active actor consent exists.',
+    )
+    add_publish_check(
+        checks,
+        blocking_reasons,
+        blocking_keys,
+        'consent_document_category',
+        'Consent allows document category',
+        document_category in consent_document_categories,
+        f'Consent allows {document_category}.' if document_category in consent_document_categories else f'Consent does not allow document category {document_category}.',
+    )
+    add_publish_check(
+        checks,
+        blocking_reasons,
+        blocking_keys,
+        'consent_sharing_channel',
+        'Consent allows sharing channel',
+        target_config['channel'] in consent_channels,
+        f"Consent allows {target_config['channel']}." if target_config['channel'] in consent_channels else f"Consent does not allow sharing channel {target_config['channel']}.",
+    )
+    add_publish_check(
+        checks,
+        blocking_reasons,
+        blocking_keys,
+        'admin_review',
+        'Admin review approved',
+        document.review_status == 'approved' and document.document_status == 'approved',
+        'Admin review and document status are approved.' if document.review_status == 'approved' and document.document_status == 'approved' else 'Admin review/document status is not approved.',
+    )
+    add_publish_check(
+        checks,
+        blocking_reasons,
+        blocking_keys,
+        'verification_status',
+        'Verification status acceptable',
+        document.verification_status == 'verified',
+        'Document is verified.' if document.verification_status == 'verified' else 'Document verification status is not verified.',
+    )
+
+    expiry_ok, expiry_message = expiry_is_acceptable(document, extraction_run)
+    add_publish_check(
+        checks,
+        blocking_reasons,
+        blocking_keys,
+        'expiry_readiness',
+        'Expiry readiness',
+        expiry_ok,
+        expiry_message,
+    )
+
+    extraction_ok, extraction_message = extraction_is_acceptable(extraction_run, reconciliation_rows)
+    add_publish_check(
+        checks,
+        blocking_reasons,
+        blocking_keys,
+        'extraction_reconciliation',
+        'Extraction and reconciliation',
+        extraction_ok,
+        extraction_message,
+    )
+
+    redaction_ok, redaction_message = redaction_is_acceptable_for_target(document, target_code, target_config)
+    add_publish_check(
+        checks,
+        blocking_reasons,
+        blocking_keys,
+        'redaction_status',
+        'Redaction status',
+        redaction_ok,
+        redaction_message,
+    )
+
+    if target_config['requires_file']:
+        file_exists = document_private_file_exists(document, version=version)
+        add_publish_check(
+            checks,
+            blocking_reasons,
+            blocking_keys,
+            'private_file_exists',
+            'Private file exists',
+            file_exists,
+            'Private current-version file exists.' if file_exists else 'Private current-version file is missing.',
+        )
+    else:
+        checks.append({
+            'key': 'private_file_exists',
+            'label': 'Private file exists',
+            'status': 'not_applicable',
+            'required': False,
+            'message': 'Private file existence is not required for metadata-only targets.',
+        })
+
+    risk_flags = extraction_run.risk_flags_json if extraction_run and extraction_run.risk_flags_json else []
+    high_risk_flags = [flag for flag in risk_flags if flag in DOCUMENT_HIGH_RISK_FLAGS]
+    add_publish_check(
+        checks,
+        blocking_reasons,
+        blocking_keys,
+        'high_risk_flags',
+        'Unresolved high-risk flags',
+        not high_risk_flags,
+        'No unresolved high-risk flags are present.' if not high_risk_flags else f"Unresolved high-risk flags: {', '.join(high_risk_flags)}.",
+    )
+
+    return {
+        'target': target_config,
+        'target_code': target_code,
+        'document_category': document_category,
+        'checks': checks,
+        'blocking_reasons': blocking_reasons,
+        'blocking_keys': blocking_keys,
+        'computed_status': 'ready' if not blocking_reasons else 'blocked',
+        'active_consent': active_consent,
+        'extraction_run': extraction_run,
+        'reconciliation_rows': reconciliation_rows,
+        'risk_flags': risk_flags,
+        'high_risk_flags': high_risk_flags,
+    }
+
+
+def get_or_create_publish_control(document, target_code):
+    control = DocumentPublishControl.query.filter_by(
+        actor_document_id=document.id,
+        publish_target=target_code,
+    ).first()
+    if control:
+        return control
+
+    control = DocumentPublishControl(
+        actor_document_id=document.id,
+        publish_target=target_code,
+        status='not_evaluated',
+        readiness_checks_json=[],
+        blocking_reasons_json=[],
+    )
+    db.session.add(control)
+    db.session.flush()
+    return control
+
+
+def persist_publish_control_evaluation(document, target_code, evaluation, admin_decision='evaluated', notes=None, status=None):
+    control = get_or_create_publish_control(document, target_code)
+    now = datetime.utcnow()
+    control.status = status or evaluation['computed_status']
+    control.readiness_checks_json = evaluation['checks']
+    control.blocking_reasons_json = evaluation['blocking_reasons']
+    control.admin_decision = admin_decision
+    if notes is not None:
+        control.notes = notes or None
+    control.decided_by_user_id = current_user.id
+    control.decided_at = now
+    control.last_evaluated_at = now
+    return control
+
+
+def publish_control_context(document):
+    target_items = []
+    for target_code in DOCUMENT_PUBLISH_TARGETS:
+        evaluation = evaluate_publish_readiness(document, target_code)
+        control = DocumentPublishControl.query.filter_by(
+            actor_document_id=document.id,
+            publish_target=target_code,
+        ).first()
+        target_items.append({
+            **evaluation,
+            'control': control,
+            'stored_status': control.status if control else 'not_evaluated',
+            'stored_blocking_reasons': control.blocking_reasons_json if control else [],
+        })
+    return target_items
+
+
+def add_admin_publish_control_audit(document, control, action, before_values, after_values):
+    db.session.add(AuditLog(
+        user_id=current_user.id,
+        organization_type='partner_organization',
+        organization_id=document.partner_organization_id,
+        action=action,
+        entity_type='document_publish_control',
+        entity_id=control.id if control else None,
+        before_values=before_values,
+        after_values=after_values,
+        ip_address=request.headers.get('X-Forwarded-For', request.remote_addr),
+        user_agent=request.headers.get('User-Agent'),
+    ))
 
 
 def add_admin_document_access_log(document, access_type, version=None):
@@ -660,6 +1049,198 @@ def document_review_decision(document_id):
 
     flash('Admin document review decision saved.', 'success')
     return redirect(url_for('admin.document_review_detail', document_id=document.id))
+
+
+@admin_bp.route('/documents/<int:document_id>/redaction', methods=['GET', 'POST'])
+@login_required
+@admin_required
+def document_redaction_controls(document_id):
+    document = ActorDocument.query.get_or_404(document_id)
+    context = document_admin_review_context(document)
+
+    if request.method == 'POST':
+        redaction_status = clean_admin_form_value('redaction_status')
+        notes = clean_admin_form_value('redaction_notes')
+        if redaction_status not in DOCUMENT_REDACTION_STATUSES:
+            flash('Please choose a supported redaction status.', 'error')
+            return redirect(url_for('admin.document_redaction_controls', document_id=document.id))
+
+        before_values = document_review_snapshot(document)
+        version = current_document_version(document)
+        document.redaction_status = redaction_status
+        document.reviewed_by_user_id = current_user.id
+        document.reviewed_at = datetime.utcnow()
+        if notes:
+            document.review_comments = notes
+
+        review_entry = DocumentReview(
+            actor_document_id=document.id,
+            actor_document_version_id=version.id if version else None,
+            reviewer_user_id=current_user.id,
+            status=f'redaction_{redaction_status}'[:50],
+            notes=notes or None,
+            reviewed_at=datetime.utcnow(),
+        )
+        db.session.add(review_entry)
+        db.session.flush()
+
+        after_values = document_review_snapshot(document)
+        after_values.update({
+            'review_entry_id': review_entry.id,
+            'redaction_status': redaction_status,
+            'actor_id': document.market_actor_id,
+            'partner_organization_id': document.partner_organization_id,
+            'external_access_changed': False,
+        })
+        add_admin_document_audit(
+            document,
+            'admin_document_redaction_updated',
+            before_values={
+                'document': before_values,
+                'actor_id': document.market_actor_id,
+                'partner_organization_id': document.partner_organization_id,
+            },
+            after_values=after_values,
+        )
+        db.session.commit()
+        flash('Redaction status updated. No subscriber or API access was created.', 'success')
+        return redirect(url_for('admin.document_redaction_controls', document_id=document.id))
+
+    return render_template(
+        'admin/document_redaction.html',
+        **context,
+        redaction_status_options=DOCUMENT_REDACTION_STATUS_OPTIONS,
+    )
+
+
+@admin_bp.route('/documents/<int:document_id>/publish-controls')
+@login_required
+@admin_required
+def document_publish_controls(document_id):
+    document = ActorDocument.query.get_or_404(document_id)
+    context = document_admin_review_context(document)
+    return render_template(
+        'admin/document_publish_controls.html',
+        **context,
+        publish_targets=publish_control_context(document),
+        publish_statuses=DOCUMENT_PUBLISH_CONTROL_STATUSES,
+    )
+
+
+@admin_bp.route('/documents/<int:document_id>/publish-controls/evaluate', methods=['POST'])
+@login_required
+@admin_required
+def document_publish_controls_evaluate(document_id):
+    document = ActorDocument.query.get_or_404(document_id)
+    before_values = {
+        item.publish_target: document_publish_control_snapshot(item)
+        for item in DocumentPublishControl.query.filter_by(actor_document_id=document.id).all()
+    }
+    evaluated_controls = []
+    for target_code in DOCUMENT_PUBLISH_TARGETS:
+        evaluation = evaluate_publish_readiness(document, target_code)
+        control = persist_publish_control_evaluation(
+            document,
+            target_code,
+            evaluation,
+            admin_decision='evaluated',
+            status=evaluation['computed_status'],
+        )
+        evaluated_controls.append(control)
+
+    db.session.flush()
+    after_values = {
+        control.publish_target: document_publish_control_snapshot(control)
+        for control in evaluated_controls
+    }
+    add_admin_document_audit(
+        document,
+        'admin_document_publish_readiness_evaluated',
+        before_values={
+            'publish_controls': before_values,
+            'actor_id': document.market_actor_id,
+            'partner_organization_id': document.partner_organization_id,
+        },
+        after_values={
+            'publish_controls': after_values,
+            'actor_id': document.market_actor_id,
+            'partner_organization_id': document.partner_organization_id,
+            'external_access_created': False,
+        },
+    )
+    db.session.commit()
+    flash('Publish readiness was evaluated for all targets. No external access was created.', 'success')
+    return redirect(url_for('admin.document_publish_controls', document_id=document.id))
+
+
+@admin_bp.route('/documents/<int:document_id>/publish-controls/decision', methods=['POST'])
+@login_required
+@admin_required
+def document_publish_controls_decision(document_id):
+    document = ActorDocument.query.get_or_404(document_id)
+    target_code = clean_admin_form_value('publish_target')
+    decision = clean_admin_form_value('decision')
+    notes = clean_admin_form_value('decision_notes')
+
+    if target_code not in DOCUMENT_PUBLISH_TARGETS:
+        flash('Please choose a supported publish target.', 'error')
+        return redirect(url_for('admin.document_publish_controls', document_id=document.id))
+    if decision not in {'evaluate', 'mark_ready', 'mark_blocked', 'waive_high_risk_flags'}:
+        flash('Please choose a supported publish-control decision.', 'error')
+        return redirect(url_for('admin.document_publish_controls', document_id=document.id))
+
+    evaluation = evaluate_publish_readiness(document, target_code)
+    control = get_or_create_publish_control(document, target_code)
+    before_values = document_publish_control_snapshot(control)
+
+    if decision == 'mark_ready':
+        if evaluation['blocking_reasons']:
+            status = 'blocked'
+            flash('This target still has blocking readiness checks and was kept blocked.', 'error')
+        else:
+            status = 'ready'
+            flash('Publish target marked ready for a future controlled workflow. No external access was created.', 'success')
+    elif decision == 'mark_blocked':
+        status = 'blocked'
+        flash('Publish target marked blocked.', 'success')
+    elif decision == 'waive_high_risk_flags':
+        non_waivable_keys = [key for key in evaluation['blocking_keys'] if key != 'high_risk_flags']
+        if non_waivable_keys or not evaluation['high_risk_flags']:
+            status = 'blocked'
+            flash('Only unresolved high-risk flags can be waived, and only after all other gates pass.', 'error')
+        else:
+            status = 'waived'
+            flash('High-risk flags were explicitly waived for this target. No external access was created.', 'warning')
+    else:
+        status = evaluation['computed_status']
+        flash('Publish target readiness was re-evaluated.', 'success')
+
+    control = persist_publish_control_evaluation(
+        document,
+        target_code,
+        evaluation,
+        admin_decision=decision,
+        notes=notes,
+        status=status,
+    )
+    db.session.flush()
+    after_values = document_publish_control_snapshot(control)
+    after_values.update({
+        'computed_status': evaluation['computed_status'],
+        'blocking_keys': evaluation['blocking_keys'],
+        'actor_id': document.market_actor_id,
+        'partner_organization_id': document.partner_organization_id,
+        'external_access_created': False,
+    })
+    add_admin_publish_control_audit(
+        document,
+        control,
+        'admin_document_publish_readiness_decision',
+        before_values=before_values,
+        after_values=after_values,
+    )
+    db.session.commit()
+    return redirect(url_for('admin.document_publish_controls', document_id=document.id))
 
 
 @admin_bp.route('/users')
