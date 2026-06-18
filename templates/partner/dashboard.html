@@ -47,6 +47,11 @@
             <p class="text-gray-600 text-sm mt-1">Track draft and submitted partner data updates.</p>
         </a>
 
+        <a href="{{ url_for('partner.document_corrections') }}" class="bg-white rounded-xl border p-6 hover:border-primary transition">
+            <h2 class="text-lg font-semibold text-gray-900">Document Corrections</h2>
+            <p class="text-gray-600 text-sm mt-1">Resolve admin rejected or needs-correction documents.</p>
+        </a>
+
         {% if can_edit %}
         <a href="{{ url_for('partner.new_batch') }}" class="bg-white rounded-xl border p-6 hover:border-primary transition">
             <h2 class="text-lg font-semibold text-gray-900">New Batch</h2>

@@ -148,6 +148,18 @@ DOCUMENT_PUBLISH_CONTROL_STATUSES = [
     "waived",
 ]
 
+DOCUMENT_ACCESS_REQUEST_TYPES = [
+    "redacted_document",
+    "full_document_restricted",
+]
+
+DOCUMENT_ACCESS_REQUEST_STATUSES = [
+    "pending",
+    "approved",
+    "rejected",
+    "cancelled",
+]
+
 CONSENT_STATUSES = [
     "not_requested",
     "requested",
@@ -1039,6 +1051,28 @@ class DocumentEntitlement(TimestampMixin, db.Model):
     payment_plan = db.relationship('PaymentPlan', backref='document_entitlements')
     licensed_pack = db.relationship('LicensedPack', backref='document_entitlements')
     document_type = db.relationship('DocumentType', backref='document_entitlements')
+
+
+class DocumentAccessRequest(TimestampMixin, db.Model):
+    __tablename__ = 'document_access_requests'
+
+    id = db.Column(db.Integer, primary_key=True)
+    actor_document_id = db.Column(db.Integer, db.ForeignKey('actor_documents.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+    api_client_id = db.Column(db.Integer, db.ForeignKey('api_clients.id'))
+    request_type = db.Column(db.String(80), nullable=False)
+    request_channel = db.Column(db.String(80), default='subscriber_portal')
+    organization_name = db.Column(db.String(180))
+    purpose = db.Column(db.Text)
+    status = db.Column(db.String(50), default='pending')
+    reviewed_by_user_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+    reviewed_at = db.Column(db.DateTime)
+    review_notes = db.Column(db.Text)
+
+    actor_document = db.relationship('ActorDocument', backref='access_requests')
+    user = db.relationship('User', foreign_keys=[user_id], backref='document_access_requests')
+    api_client = db.relationship('ApiClient', backref='document_access_requests')
+    reviewed_by_user = db.relationship('User', foreign_keys=[reviewed_by_user_id], backref='reviewed_document_access_requests')
 
 
 class ActorConsentRecord(TimestampMixin, db.Model):

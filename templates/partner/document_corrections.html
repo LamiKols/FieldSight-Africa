@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+
+{% block title %}Document Corrections - FieldSight Africa{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="flex items-center justify-between gap-4 mb-8">
+        <div>
+            <a href="{{ url_for('partner.dashboard') }}" class="text-primary hover:underline text-sm">&larr; Back to Partner Dashboard</a>
+            <h1 class="text-3xl font-bold text-gray-900 mt-3">Document Corrections</h1>
+            <p class="text-gray-600 mt-1">{{ organization.name }}</p>
+        </div>
+    </div>
+
+    <div class="bg-white rounded-xl shadow-sm border overflow-hidden">
+        <div class="px-6 py-4 border-b">
+            <h2 class="text-xl font-semibold text-gray-900">Rejected Or Needs-Correction Documents</h2>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Document</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actor</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Admin Comments</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Action</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y">
+                    {% for document in documents %}
+                    <tr>
+                        <td class="px-5 py-4 text-sm text-gray-900">{{ document.title }}</td>
+                        <td class="px-5 py-4 text-sm text-gray-700">{{ document.market_actor.name }}</td>
+                        <td class="px-5 py-4 text-sm text-red-700">{{ document.review_status|replace('_', ' ')|title }}</td>
+                        <td class="px-5 py-4 text-sm text-gray-700">{{ document.review_comments or 'No comments recorded' }}</td>
+                        <td class="px-5 py-4 text-sm">
+                            {% if can_correct %}
+                            <a href="{{ url_for('partner.correct_document', document_id=document.id) }}" class="text-primary hover:underline">Correct</a>
+                            {% else %}
+                            <a href="{{ url_for('partner.document_detail', document_id=document.id) }}" class="text-primary hover:underline">View</a>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="5" class="px-6 py-10 text-center text-gray-500">No documents currently require correction.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -6,7 +6,30 @@ import json
 from datetime import datetime, timedelta
 from flask import Blueprint, render_template, redirect, url_for, flash, request, Response
 from flask_login import login_required, current_user
-from models import db, Dataset, DatasetMonth, DatasetRecord, ExportLog, ViewLog, LicensedPack, License, get_user_entitlements, NIGERIA_REGIONS
+from document_access import (
+    ACCESS_REQUEST_TARGET_BY_TYPE,
+    document_metadata_access_decision,
+    externally_candidate_documents,
+    log_document_access_attempt,
+    request_target_allows,
+    safe_document_metadata_payload,
+)
+from models import (
+    DOCUMENT_ACCESS_REQUEST_TYPES,
+    ActorDocument,
+    AuditLog,
+    Dataset,
+    DatasetMonth,
+    DatasetRecord,
+    DocumentAccessRequest,
+    ExportLog,
+    License,
+    LicensedPack,
+    NIGERIA_REGIONS,
+    ViewLog,
+    db,
+    get_user_entitlements,
+)
 
 subscriber_bp = Blueprint('subscriber', __name__)
 
@@ -45,6 +68,34 @@ def filter_records_by_entitlements(records, entitlements):
         
         filtered.append(record)
     return filtered
+
+
+def request_ip():
+    return request.headers.get('X-Forwarded-For', request.remote_addr)
+
+
+def request_user_agent():
+    return request.headers.get('User-Agent')
+
+
+def add_subscriber_audit(action, entity_type, entity_id, before_values=None, after_values=None):
+    db.session.add(AuditLog(
+        user_id=current_user.id,
+        organization_type='subscriber',
+        organization_id=current_user.id,
+        action=action,
+        entity_type=entity_type,
+        entity_id=entity_id,
+        before_values=before_values,
+        after_values=after_values,
+        ip_address=request_ip(),
+        user_agent=request_user_agent(),
+    ))
+
+
+def clean_subscriber_form_value(field_name):
+    value = request.form.get(field_name, '')
+    return value.strip() if value else ''
 
 
 @subscriber_bp.route('/dashboard')
@@ -99,6 +150,183 @@ def datasets():
         })
     
     return render_template('datasets.html', dataset_info=dataset_info, plan=plan, entitlements=entitlements)
+
+
+@subscriber_bp.route('/subscriber/document-metadata')
+@login_required
+def document_metadata():
+    metadata_items = []
+    blocked_count = 0
+    for document in externally_candidate_documents():
+        allowed, reasons, publish_control, _extraction_run = document_metadata_access_decision(
+            current_user,
+            document,
+            'subscriber_portal',
+        )
+        log_document_access_attempt(
+            document,
+            'subscriber_metadata_list_allowed' if allowed else 'subscriber_metadata_list_blocked',
+            'subscriber_portal',
+            user=current_user,
+            subscriber_organization_name=current_user.name,
+            ip_address=request_ip(),
+            user_agent=request_user_agent(),
+        )
+        if allowed:
+            metadata_items.append(safe_document_metadata_payload(document, 'subscriber_portal', publish_control=publish_control))
+        else:
+            blocked_count += 1
+
+    db.session.commit()
+    return render_template(
+        'subscriber/document_metadata.html',
+        metadata_items=metadata_items,
+        blocked_count=blocked_count,
+        entitlements=get_user_entitlements(current_user),
+    )
+
+
+@subscriber_bp.route('/subscriber/document-metadata/<int:document_id>')
+@login_required
+def document_metadata_detail(document_id):
+    document = ActorDocument.query.get_or_404(document_id)
+    allowed, reasons, publish_control, _extraction_run = document_metadata_access_decision(
+        current_user,
+        document,
+        'subscriber_portal',
+    )
+    log_document_access_attempt(
+        document,
+        'subscriber_metadata_detail_allowed' if allowed else 'subscriber_metadata_detail_blocked',
+        'subscriber_portal',
+        user=current_user,
+        subscriber_organization_name=current_user.name,
+        ip_address=request_ip(),
+        user_agent=request_user_agent(),
+    )
+    db.session.commit()
+
+    if not allowed:
+        flash('Document metadata is not available under your current entitlement and governance gates.', 'error')
+        return redirect(url_for('subscriber.document_metadata'))
+
+    metadata = safe_document_metadata_payload(document, 'subscriber_portal', publish_control=publish_control)
+    return render_template(
+        'subscriber/document_metadata_detail.html',
+        metadata=metadata,
+        document=document,
+        request_types=DOCUMENT_ACCESS_REQUEST_TYPES,
+        access_request_targets=ACCESS_REQUEST_TARGET_BY_TYPE,
+    )
+
+
+@subscriber_bp.route('/subscriber/document-access-requests/new', methods=['GET', 'POST'])
+@login_required
+def new_document_access_request():
+    selected_document_id = request.args.get('document_id', '').strip()
+    accessible_documents = []
+    for document in externally_candidate_documents():
+        allowed, _reasons, publish_control, _extraction_run = document_metadata_access_decision(
+            current_user,
+            document,
+            'subscriber_portal',
+        )
+        if allowed:
+            accessible_documents.append({
+                'document': document,
+                'metadata': safe_document_metadata_payload(document, 'subscriber_portal', publish_control=publish_control),
+            })
+
+    if request.method == 'POST':
+        document_id = clean_subscriber_form_value('document_id')
+        request_type = clean_subscriber_form_value('request_type')
+        organization_name = clean_subscriber_form_value('organization_name')
+        purpose = clean_subscriber_form_value('purpose')
+        if not document_id.isdigit():
+            flash('Please choose a document.', 'error')
+            return render_template('subscriber/document_access_request_form.html', accessible_documents=accessible_documents, request_types=DOCUMENT_ACCESS_REQUEST_TYPES, selected_document_id=selected_document_id)
+        if request_type not in DOCUMENT_ACCESS_REQUEST_TYPES:
+            flash('Please choose a supported access request type.', 'error')
+            return render_template('subscriber/document_access_request_form.html', accessible_documents=accessible_documents, request_types=DOCUMENT_ACCESS_REQUEST_TYPES, selected_document_id=selected_document_id)
+        if not purpose:
+            flash('Purpose is required.', 'error')
+            return render_template('subscriber/document_access_request_form.html', accessible_documents=accessible_documents, request_types=DOCUMENT_ACCESS_REQUEST_TYPES, selected_document_id=selected_document_id)
+
+        document = ActorDocument.query.get_or_404(int(document_id))
+        metadata_allowed, reasons, _publish_control, _extraction_run = document_metadata_access_decision(
+            current_user,
+            document,
+            'subscriber_portal',
+        )
+        target_allowed, target_reason, request_publish_control = request_target_allows(document, request_type)
+        if not metadata_allowed or not target_allowed:
+            log_document_access_attempt(
+                document,
+                'subscriber_document_access_request_blocked',
+                'subscriber_portal',
+                user=current_user,
+                subscriber_organization_name=organization_name or current_user.name,
+                ip_address=request_ip(),
+                user_agent=request_user_agent(),
+            )
+            add_subscriber_audit(
+                'subscriber_document_access_request_blocked',
+                'actor_document',
+                document.id,
+                after_values={
+                    'request_type': request_type,
+                    'metadata_allowed': metadata_allowed,
+                    'request_target_allowed': target_allowed,
+                    'reasons': reasons,
+                    'target_reason': target_reason,
+                },
+            )
+            db.session.commit()
+            flash('This document is not eligible for a restricted access request yet.', 'error')
+            return redirect(url_for('subscriber.document_metadata_detail', document_id=document.id) if metadata_allowed else url_for('subscriber.document_metadata'))
+
+        access_request = DocumentAccessRequest(
+            actor_document_id=document.id,
+            user_id=current_user.id,
+            request_type=request_type,
+            request_channel='subscriber_portal',
+            organization_name=organization_name or current_user.name,
+            purpose=purpose,
+            status='pending',
+        )
+        db.session.add(access_request)
+        db.session.flush()
+        log_document_access_attempt(
+            document,
+            'subscriber_document_access_request_created',
+            'subscriber_portal',
+            user=current_user,
+            subscriber_organization_name=access_request.organization_name,
+            ip_address=request_ip(),
+            user_agent=request_user_agent(),
+        )
+        add_subscriber_audit(
+            'subscriber_document_access_requested',
+            'document_access_request',
+            access_request.id,
+            after_values={
+                'actor_document_id': document.id,
+                'request_type': request_type,
+                'publish_target': ACCESS_REQUEST_TARGET_BY_TYPE.get(request_type),
+                'publish_status': request_publish_control.status if request_publish_control else None,
+                'auto_granted': False,
+            },
+        )
+        db.session.commit()
+        flash('Access request recorded for admin review. No document access has been granted automatically.', 'success')
+        return redirect(url_for('subscriber.document_metadata_detail', document_id=document.id))
+
+    return render_template(
+        'subscriber/document_access_request_form.html',
+        accessible_documents=accessible_documents,
+        request_types=DOCUMENT_ACCESS_REQUEST_TYPES,
+        selected_document_id=selected_document_id,
+    )
 
 
 @subscriber_bp.route('/datasets/<dataset_code>/<month>')
