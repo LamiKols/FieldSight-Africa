@@ -9,7 +9,7 @@
         <p class="text-gray-600 mt-1">Manage datasets, users, and monitor platform activity</p>
     </div>
 
-    <div class="grid md:grid-cols-9 gap-6 mb-8">
+    <div class="grid md:grid-cols-10 gap-6 mb-8">
         <div class="bg-white rounded-xl shadow-sm border p-6">
             <h3 class="text-sm font-medium text-gray-500 uppercase tracking-wide">Total Users</h3>
             <p class="text-3xl font-bold text-gray-900 mt-2">{{ total_users }}</p>
@@ -53,6 +53,11 @@
         <div class="bg-white rounded-xl shadow-sm border p-6">
             <h3 class="text-sm font-medium text-gray-500 uppercase tracking-wide">Fulfilment</h3>
             <p class="text-3xl font-bold text-primary mt-2">{{ commercial_requests_ready_for_fulfilment }}</p>
+        </div>
+
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <h3 class="text-sm font-medium text-gray-500 uppercase tracking-wide">Follow-up</h3>
+            <p class="text-3xl font-bold text-primary mt-2">{{ commercial_report_followups }}</p>
         </div>
     </div>
 
@@ -173,6 +178,18 @@
                 <div>
                     <h3 class="font-semibold text-lg text-gray-900">Commercial Requests</h3>
                     <p class="text-gray-600 text-sm">Review and fulfil enquiries</p>
+                </div>
+            </div>
+        </a>
+
+        <a href="{{ url_for('admin.commercial_reports') }}" class="bg-white rounded-xl border p-6 hover:border-primary transition">
+            <div class="flex items-center">
+                <svg class="w-8 h-8 mr-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 3v18M5 13l6 6 6-6M5 7h14"/>
+                </svg>
+                <div>
+                    <h3 class="font-semibold text-lg text-gray-900">Commercial Reports</h3>
+                    <p class="text-gray-600 text-sm">Pipeline and revenue signals</p>
                 </div>
             </div>
         </a>

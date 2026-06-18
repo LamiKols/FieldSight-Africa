@@ -4,7 +4,8 @@ import csv
 import io
 import json
 import mimetypes
-from datetime import datetime
+from collections import Counter
+from datetime import datetime, timedelta
 from flask import Blueprint, abort, render_template, redirect, send_file, url_for, flash, request
 from flask_login import login_required, current_user
 from functools import wraps
@@ -256,6 +257,34 @@ DUE_DILIGENCE_VISIBILITY_LABELS = {
     'metadata_only': 'Metadata Only Visibility',
     'redacted_document_candidate': 'Redacted Access Candidate',
     'full_document_restricted_candidate': 'Restricted Full-Document Candidate',
+}
+
+COMMERCIAL_REPORT_WINDOWS = {
+    '7d': {'label': 'Last 7 days', 'days': 7},
+    '30d': {'label': 'Last 30 days', 'days': 30},
+    '90d': {'label': 'Last 90 days', 'days': 90},
+    'all': {'label': 'All time', 'days': None},
+}
+
+COMMERCIAL_REPORT_DEFAULT_WINDOW = '30d'
+
+COMMERCIAL_REPORT_OPEN_STATUSES = {
+    'pending',
+    'in_review',
+    'contacted',
+    'approved_for_fulfilment',
+}
+
+DUE_DILIGENCE_REPORT_OPEN_STATUSES = {
+    'pending',
+    'in_review',
+    'needs_information',
+    'approved_for_redacted_access',
+}
+
+COMMERCIAL_REPORT_CONVERSION_STATUSES = {
+    'approved_for_fulfilment',
+    'closed',
 }
 
 
@@ -1138,6 +1167,346 @@ def create_due_diligence_fulfilment_action(access_request, action_type, notes, v
     return fulfilment_action
 
 
+def commercial_report_window_context(window_key=None):
+    selected = window_key or request.args.get('window', COMMERCIAL_REPORT_DEFAULT_WINDOW).strip()
+    if selected not in COMMERCIAL_REPORT_WINDOWS:
+        selected = COMMERCIAL_REPORT_DEFAULT_WINDOW
+    config = COMMERCIAL_REPORT_WINDOWS[selected]
+    cutoff = None
+    if config['days'] is not None:
+        cutoff = datetime.utcnow() - timedelta(days=config['days'])
+    return {
+        'key': selected,
+        'label': config['label'],
+        'cutoff': cutoff,
+        'options': [
+            {'key': key, 'label': value['label']}
+            for key, value in COMMERCIAL_REPORT_WINDOWS.items()
+        ],
+    }
+
+
+def report_filter_created(query, model, cutoff):
+    if cutoff is not None:
+        return query.filter(model.created_at >= cutoff)
+    return query
+
+
+def report_unknown(value):
+    return value if value not in (None, '') else 'Unspecified'
+
+
+def report_count_items(records, field_name, limit=None):
+    counter = Counter(report_unknown(getattr(record, field_name, None)) for record in records)
+    items = [
+        {'label': label, 'count': count}
+        for label, count in sorted(counter.items(), key=lambda item: (-item[1], str(item[0])))
+    ]
+    return items[:limit] if limit else items
+
+
+def report_date_items(records, field_name='created_at', limit=None):
+    counter = Counter()
+    for record in records:
+        value = getattr(record, field_name, None)
+        label = value.strftime('%Y-%m-%d') if value else 'Unknown date'
+        counter[label] += 1
+    items = [
+        {'label': label, 'count': count}
+        for label, count in sorted(counter.items(), key=lambda item: item[0], reverse=True)
+    ]
+    return items[:limit] if limit else items
+
+
+def report_percentage(numerator, denominator):
+    if not denominator:
+        return 0
+    return round((numerator / denominator) * 100, 1)
+
+
+def commercial_request_scope_label(commercial_request):
+    return (
+        commercial_request.requested_product
+        or commercial_request.dataset_code
+        or commercial_request.region_code
+        or commercial_request.crop_name
+        or 'General request'
+    )
+
+
+def safe_commercial_followup_item(commercial_request):
+    return {
+        'id': commercial_request.id,
+        'kind': commercial_request.request_type.replace('_', ' ').title(),
+        'status': commercial_request.status.replace('_', ' ').title() if commercial_request.status else 'Unknown',
+        'scope': commercial_request_scope_label(commercial_request),
+        'created_at': commercial_request.created_at,
+        'age_days': (datetime.utcnow() - commercial_request.created_at).days if commercial_request.created_at else None,
+        'url': url_for('admin.commercial_request_detail', request_id=commercial_request.id),
+    }
+
+
+def safe_due_diligence_followup_item(access_request):
+    return {
+        'id': access_request.id,
+        'kind': access_request.request_type.replace('_', ' ').title() if access_request.request_type else 'Document Access',
+        'status': access_request.status.replace('_', ' ').title() if access_request.status else 'Unknown',
+        'scope': access_request.organization_name or f"Request #{access_request.id}",
+        'created_at': access_request.created_at,
+        'age_days': (datetime.utcnow() - access_request.created_at).days if access_request.created_at else None,
+        'url': url_for('admin.due_diligence_request_detail', request_id=access_request.id),
+    }
+
+
+def build_commercial_report_context(window_key=None):
+    window = commercial_report_window_context(window_key=window_key)
+    cutoff = window['cutoff']
+
+    commercial_requests = report_filter_created(
+        CommercialRequest.query,
+        CommercialRequest,
+        cutoff,
+    ).order_by(CommercialRequest.created_at.desc(), CommercialRequest.id.desc()).all()
+    due_diligence_requests = report_filter_created(
+        DocumentAccessRequest.query,
+        DocumentAccessRequest,
+        cutoff,
+    ).order_by(DocumentAccessRequest.created_at.desc(), DocumentAccessRequest.id.desc()).all()
+    subscriptions = report_filter_created(
+        Subscription.query,
+        Subscription,
+        cutoff,
+    ).order_by(Subscription.created_at.desc()).all()
+    licenses = report_filter_created(
+        License.query,
+        License,
+        cutoff,
+    ).order_by(License.created_at.desc()).all()
+    api_clients = report_filter_created(
+        ApiClient.query,
+        ApiClient,
+        cutoff,
+    ).order_by(ApiClient.created_at.desc()).all()
+    live_accesses = report_filter_created(
+        LiveIntelligenceAccess.query,
+        LiveIntelligenceAccess,
+        cutoff,
+    ).order_by(LiveIntelligenceAccess.created_at.desc()).all()
+
+    api_enquiries = [item for item in commercial_requests if item.request_type == 'api_access']
+    live_requests = [item for item in commercial_requests if item.request_type == 'live_intelligence']
+    upgrade_requests = [item for item in commercial_requests if item.request_type == 'upgrade']
+
+    open_commercial_requests = [
+        item for item in commercial_requests
+        if item.status in COMMERCIAL_REPORT_OPEN_STATUSES
+    ]
+    open_due_diligence_requests = [
+        item for item in due_diligence_requests
+        if item.status in DUE_DILIGENCE_REPORT_OPEN_STATUSES
+    ]
+
+    commercial_request_ids = [item.id for item in commercial_requests]
+    fulfilled_commercial_request_ids = set()
+    if commercial_request_ids:
+        fulfilment_rows = CommercialFulfilmentAction.query.filter(
+            CommercialFulfilmentAction.commercial_request_id.in_(commercial_request_ids)
+        ).all()
+        fulfilled_commercial_request_ids = {item.commercial_request_id for item in fulfilment_rows}
+
+    active_subscriptions = [item for item in subscriptions if item.status == 'active']
+    active_licenses = [item for item in licenses if item.status == 'active']
+    active_packs = LicensedPack.query.filter_by(active=True).order_by(LicensedPack.price_usd).all()
+    active_api_clients = [item for item in api_clients if item.status == 'active']
+    active_live_accesses = [item for item in live_accesses if item.active]
+
+    license_value_usd = sum(
+        (license_record.licensed_pack.price_usd or 0)
+        for license_record in active_licenses
+        if license_record.licensed_pack
+    )
+    license_value_ngn = sum(
+        (license_record.licensed_pack.price_ngn or 0)
+        for license_record in active_licenses
+        if license_record.licensed_pack
+    )
+    pack_catalogue_value_usd = sum(pack.price_usd or 0 for pack in active_packs)
+    pack_catalogue_value_ngn = sum(pack.price_ngn or 0 for pack in active_packs)
+    conversion_ready_count = len([
+        item for item in commercial_requests
+        if item.status in COMMERCIAL_REPORT_CONVERSION_STATUSES
+    ])
+
+    pipeline_summary = [
+        {
+            'label': 'Commercial Requests',
+            'count': len(commercial_requests),
+            'detail': f"{len(open_commercial_requests)} open",
+            'url': url_for('admin.commercial_requests'),
+        },
+        {
+            'label': 'Due Diligence Requests',
+            'count': len(due_diligence_requests),
+            'detail': f"{len(open_due_diligence_requests)} open",
+            'url': url_for('admin.due_diligence_requests'),
+        },
+        {
+            'label': 'API Enquiries',
+            'count': len(api_enquiries),
+            'detail': f"{len([item for item in api_enquiries if item.status in COMMERCIAL_REPORT_OPEN_STATUSES])} open",
+            'url': url_for('admin.api_dashboard'),
+        },
+        {
+            'label': 'Live Intelligence Requests',
+            'count': len(live_requests),
+            'detail': f"{len(active_live_accesses)} active grants in window",
+            'url': url_for('admin.live_intelligence'),
+        },
+        {
+            'label': 'Upgrade Requests',
+            'count': len(upgrade_requests),
+            'detail': f"{len([item for item in upgrade_requests if item.status in COMMERCIAL_REPORT_CONVERSION_STATUSES])} conversion-ready",
+            'url': url_for('admin.commercial_requests', request_type='upgrade'),
+        },
+        {
+            'label': 'Licences',
+            'count': len(active_licenses),
+            'detail': f"${license_value_usd:,} active pack value",
+            'url': url_for('admin.commercial_dashboard'),
+        },
+        {
+            'label': 'Subscriptions',
+            'count': len(active_subscriptions),
+            'detail': 'active subscriptions',
+            'url': url_for('admin.users'),
+        },
+        {
+            'label': 'Data Pack Activity',
+            'count': len(active_packs),
+            'detail': f"{len(licenses)} licence events in window",
+            'url': url_for('admin.commercial_dashboard'),
+        },
+    ]
+
+    request_funnel = {
+        'commercial_by_status': report_count_items(commercial_requests, 'status'),
+        'commercial_by_type': report_count_items(commercial_requests, 'request_type'),
+        'commercial_by_product': report_count_items(commercial_requests, 'requested_product', limit=12),
+        'commercial_by_region': report_count_items(commercial_requests, 'region_code'),
+        'commercial_by_crop': report_count_items(commercial_requests, 'crop_name', limit=12),
+        'commercial_by_date': report_date_items(commercial_requests, limit=14),
+        'due_diligence_by_status': report_count_items(due_diligence_requests, 'status'),
+        'due_diligence_by_type': report_count_items(due_diligence_requests, 'request_type'),
+        'due_diligence_by_date': report_date_items(due_diligence_requests, limit=14),
+    }
+
+    revenue_readiness = {
+        'active_pack_count': len(active_packs),
+        'pack_catalogue_value_usd': pack_catalogue_value_usd,
+        'pack_catalogue_value_ngn': pack_catalogue_value_ngn,
+        'active_subscription_count': len(active_subscriptions),
+        'active_license_count': len(active_licenses),
+        'license_value_usd': license_value_usd,
+        'license_value_ngn': license_value_ngn,
+        'conversion_ready_count': conversion_ready_count,
+        'fulfilled_commercial_request_count': len(fulfilled_commercial_request_ids),
+        'conversion_rate_percent': report_percentage(len(fulfilled_commercial_request_ids), len(commercial_requests)),
+        'active_api_client_count': len(active_api_clients),
+        'active_live_intelligence_count': len(active_live_accesses),
+        'subscriptions_by_plan': report_count_items(active_subscriptions, 'plan_code'),
+        'licenses_by_pack': [],
+    }
+    license_pack_counter = Counter(
+        license_record.licensed_pack.name if license_record.licensed_pack else 'Unspecified pack'
+        for license_record in active_licenses
+    )
+    revenue_readiness['licenses_by_pack'] = [
+        {'label': label, 'count': count}
+        for label, count in sorted(license_pack_counter.items(), key=lambda item: (-item[1], item[0]))
+    ]
+
+    follow_up_queues = {
+        'commercial': [safe_commercial_followup_item(item) for item in open_commercial_requests[:20]],
+        'due_diligence': [safe_due_diligence_followup_item(item) for item in open_due_diligence_requests[:20]],
+        'api': [safe_commercial_followup_item(item) for item in api_enquiries if item.status in COMMERCIAL_REPORT_OPEN_STATUSES][:20],
+        'live_intelligence': [safe_commercial_followup_item(item) for item in live_requests if item.status in COMMERCIAL_REPORT_OPEN_STATUSES][:20],
+    }
+
+    return {
+        'window': window,
+        'pipeline_summary': pipeline_summary,
+        'request_funnel': request_funnel,
+        'revenue_readiness': revenue_readiness,
+        'follow_up_queues': follow_up_queues,
+        'commercial_requests': commercial_requests,
+        'due_diligence_requests': due_diligence_requests,
+        'api_enquiries': api_enquiries,
+        'live_requests': live_requests,
+        'upgrade_requests': upgrade_requests,
+        'licenses': licenses,
+        'subscriptions': subscriptions,
+    }
+
+
+def commercial_report_csv_rows(context):
+    rows = []
+    for item in context['pipeline_summary']:
+        rows.append({
+            'section': 'pipeline_summary',
+            'metric': item['label'],
+            'segment': 'total',
+            'count': item['count'],
+            'detail': item['detail'],
+            'window': context['window']['label'],
+        })
+
+    for group_name, items in context['request_funnel'].items():
+        for item in items:
+            rows.append({
+                'section': 'request_funnel',
+                'metric': group_name,
+                'segment': item['label'],
+                'count': item['count'],
+                'detail': '',
+                'window': context['window']['label'],
+            })
+
+    revenue = context['revenue_readiness']
+    for metric in [
+        'active_pack_count',
+        'pack_catalogue_value_usd',
+        'pack_catalogue_value_ngn',
+        'active_subscription_count',
+        'active_license_count',
+        'license_value_usd',
+        'license_value_ngn',
+        'conversion_ready_count',
+        'fulfilled_commercial_request_count',
+        'conversion_rate_percent',
+        'active_api_client_count',
+        'active_live_intelligence_count',
+    ]:
+        rows.append({
+            'section': 'revenue_readiness',
+            'metric': metric,
+            'segment': 'total',
+            'count': revenue[metric],
+            'detail': '',
+            'window': context['window']['label'],
+        })
+
+    for queue_name, items in context['follow_up_queues'].items():
+        rows.append({
+            'section': 'follow_up_queue',
+            'metric': queue_name,
+            'segment': 'open_items',
+            'count': len(items),
+            'detail': 'Aggregate only; restricted fields excluded',
+            'window': context['window']['label'],
+        })
+    return rows
+
+
 def decision_notes_for_action(action):
     review_notes = clean_admin_form_value('review_notes')
     correction_reason = clean_admin_form_value('correction_reason')
@@ -1212,6 +1581,7 @@ def dashboard():
     ).count()
     pending_commercial_requests = CommercialRequest.query.filter_by(status='pending').count()
     commercial_requests_ready_for_fulfilment = CommercialRequest.query.filter_by(status='approved_for_fulfilment').count()
+    commercial_report_followups = pending_commercial_requests + active_due_diligence_requests
     
     recent_exports = ExportLog.query.order_by(ExportLog.exported_at.desc()).limit(10).all()
     
@@ -1225,6 +1595,7 @@ def dashboard():
                            active_due_diligence_requests=active_due_diligence_requests,
                            pending_commercial_requests=pending_commercial_requests,
                            commercial_requests_ready_for_fulfilment=commercial_requests_ready_for_fulfilment,
+                           commercial_report_followups=commercial_report_followups,
                            recent_exports=recent_exports)
 
 
@@ -1277,6 +1648,35 @@ def commercial_dashboard():
         commercial_requests=commercial_requests,
         recent_gated_audit_events=recent_gated_audit_events,
         recent_gated_document_events=recent_gated_document_events,
+    )
+
+
+@admin_bp.route('/commercial-reports')
+@login_required
+@admin_required
+def commercial_reports():
+    context = build_commercial_report_context()
+    return render_template('admin/commercial_reports.html', **context)
+
+
+@admin_bp.route('/commercial-reports/pipeline.csv')
+@login_required
+@admin_required
+def commercial_reports_pipeline_csv():
+    context = build_commercial_report_context()
+    output = io.StringIO()
+    fieldnames = ['section', 'metric', 'segment', 'count', 'detail', 'window']
+    writer = csv.DictWriter(output, fieldnames=fieldnames)
+    writer.writeheader()
+    writer.writerows(commercial_report_csv_rows(context))
+
+    data = io.BytesIO(output.getvalue().encode('utf-8'))
+    filename = f"fieldsight_commercial_pipeline_{context['window']['key']}.csv"
+    return send_file(
+        data,
+        mimetype='text/csv',
+        as_attachment=True,
+        download_name=filename,
     )
 
 
