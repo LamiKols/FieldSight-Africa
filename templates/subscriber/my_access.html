@@ -221,16 +221,19 @@
 
     <div class="grid lg:grid-cols-2 gap-6">
         <section class="bg-white rounded-xl shadow-sm border p-6">
-            <h2 class="text-xl font-semibold text-gray-900 mb-5">Recent Commercial Requests</h2>
+            <div class="flex items-center justify-between gap-3 mb-5">
+                <h2 class="text-xl font-semibold text-gray-900">Recent Commercial Requests</h2>
+                <a href="{{ url_for('subscriber.commercial_requests') }}" class="text-sm text-primary hover:underline">View all</a>
+            </div>
             <div class="space-y-3">
                 {% for commercial_request in commercial_requests %}
-                <div class="rounded-lg border border-gray-200 p-4">
+                <a href="{{ url_for('subscriber.commercial_request_detail', request_id=commercial_request.id) }}" class="block rounded-lg border border-gray-200 p-4 hover:border-primary">
                     <div class="flex items-center justify-between gap-3">
                         <span class="font-medium text-gray-900">{{ request_labels.get(commercial_request.request_type, commercial_request.request_type)|title }}</span>
                         <span class="text-sm text-gray-600">{{ commercial_request.status|replace('_', ' ')|title }}</span>
                     </div>
                     <p class="text-sm text-gray-600 mt-1">{{ commercial_request.requested_product or commercial_request.dataset_code or commercial_request.region_code or commercial_request.crop_name or 'General request' }}</p>
-                </div>
+                </a>
                 {% else %}
                 <p class="text-sm text-gray-600">No commercial requests have been submitted yet.</p>
                 {% endfor %}

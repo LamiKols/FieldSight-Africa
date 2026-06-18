@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block title %}Commercial Requests - FieldSight Africa{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="mb-8">
+        <a href="{{ url_for('subscriber.my_access') }}" class="text-primary hover:underline text-sm">&larr; Back to My Access</a>
+        <h1 class="text-3xl font-bold text-gray-900 mt-3">Commercial Requests</h1>
+        <p class="text-gray-600 mt-1">Track upgrade, API access, and Live Intelligence enquiries submitted by your account.</p>
+    </div>
+
+    <section class="bg-white rounded-xl shadow-sm border overflow-hidden">
+        <div class="px-6 py-4 border-b flex items-center justify-between gap-3">
+            <h2 class="text-xl font-semibold text-gray-900">Request Status</h2>
+            <a href="{{ url_for('subscriber.commercial_request_new') }}" class="text-sm text-primary hover:underline">New request</a>
+        </div>
+        <div class="divide-y">
+            {% for commercial_request in commercial_requests %}
+            <a href="{{ url_for('subscriber.commercial_request_detail', request_id=commercial_request.id) }}" class="block px-6 py-4 hover:bg-gray-50">
+                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                    <div>
+                        <p class="font-medium text-gray-900">{{ request_labels.get(commercial_request.request_type, commercial_request.request_type)|title }}</p>
+                        <p class="text-sm text-gray-600">{{ commercial_request.requested_product or commercial_request.dataset_code or commercial_request.region_code or commercial_request.crop_name or 'General request' }}</p>
+                    </div>
+                    <div class="text-sm text-gray-600 sm:text-right">
+                        <p>{{ commercial_request.status|replace('_', ' ')|title }}</p>
+                        <p>{{ commercial_request.created_at.strftime('%Y-%m-%d') if commercial_request.created_at else '' }}</p>
+                    </div>
+                </div>
+            </a>
+            {% else %}
+            <div class="px-6 py-8 text-center text-gray-500">
+                <p>No commercial requests have been submitted yet.</p>
+                <a href="{{ url_for('subscriber.commercial_request_new') }}" class="inline-block mt-3 text-primary hover:underline">Start a request</a>
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+</div>
+{% endblock %}

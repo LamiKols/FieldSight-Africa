@@ -135,16 +135,19 @@
     </section>
 
     <section class="bg-white rounded-xl shadow-sm border p-6">
-        <h2 class="text-xl font-semibold text-gray-900 mb-4">API Access Requests</h2>
+        <div class="flex items-center justify-between gap-3 mb-4">
+            <h2 class="text-xl font-semibold text-gray-900">API Access Requests</h2>
+            <a href="{{ url_for('subscriber.commercial_requests') }}" class="text-sm text-primary hover:underline">View status</a>
+        </div>
         <div class="space-y-3">
             {% for api_request in api_requests %}
-            <div class="rounded-lg border border-gray-200 p-4">
+            <a href="{{ url_for('subscriber.commercial_request_detail', request_id=api_request.id) }}" class="block rounded-lg border border-gray-200 p-4 hover:border-primary">
                 <div class="flex items-center justify-between gap-4">
                     <span class="font-medium text-gray-900">{{ api_request.requested_product or 'API Metadata Access' }}</span>
                     <span class="text-sm text-gray-600">{{ api_request.status|replace('_', ' ')|title }}</span>
                 </div>
                 <p class="text-sm text-gray-600 mt-1">{{ api_request.organization_name or current_user.name }}</p>
-            </div>
+            </a>
             {% else %}
             <p class="text-sm text-gray-600">No API access enquiries have been submitted yet.</p>
             {% endfor %}

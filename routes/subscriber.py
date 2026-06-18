@@ -4,7 +4,7 @@ import csv
 import io
 import json
 from datetime import datetime, timedelta
-from flask import Blueprint, render_template, redirect, url_for, flash, request, Response
+from flask import Blueprint, abort, render_template, redirect, url_for, flash, request, Response
 from flask_login import login_required, current_user
 from document_access import (
     ACCESS_REQUEST_TARGET_BY_TYPE,
@@ -715,6 +715,42 @@ def products():
         entitlements=entitlements,
         regions=NIGERIA_REGIONS,
         request_labels=COMMERCIAL_REQUEST_LABELS,
+    )
+
+
+@subscriber_bp.route('/subscriber/commercial-requests')
+@login_required
+def commercial_requests():
+    requests = (
+        CommercialRequest.query.filter_by(user_id=current_user.id)
+        .order_by(CommercialRequest.created_at.desc(), CommercialRequest.id.desc())
+        .all()
+    )
+    return render_template(
+        'subscriber/commercial_requests.html',
+        commercial_requests=requests,
+        request_labels=COMMERCIAL_REQUEST_LABELS,
+    )
+
+
+@subscriber_bp.route('/subscriber/commercial-requests/<int:request_id>')
+@login_required
+def commercial_request_detail(request_id):
+    commercial_request = CommercialRequest.query.filter_by(
+        id=request_id,
+        user_id=current_user.id,
+    ).first()
+    if not commercial_request:
+        abort(404)
+    return render_template(
+        'subscriber/commercial_request_detail.html',
+        commercial_request=commercial_request,
+        request_labels=COMMERCIAL_REQUEST_LABELS,
+        fulfilment_actions=sorted(
+            commercial_request.fulfilment_actions,
+            key=lambda action: (action.created_at or datetime.min, action.id or 0),
+            reverse=True,
+        ),
     )
 
 

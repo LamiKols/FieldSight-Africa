@@ -15,6 +15,9 @@ from models import (
     ApiKey,
     ApiUsageEvent,
     AuditLog,
+    COMMERCIAL_FULFILMENT_ACTION_TYPES,
+    COMMERCIAL_REQUEST_STATUSES,
+    CommercialFulfilmentAction,
     CommercialRequest,
     DocumentAccessLog,
     DocumentAccessRequest,
@@ -191,6 +194,33 @@ DOCUMENT_HIGH_RISK_FLAGS = {
 }
 
 REDACTION_CLEAR_STATUSES = {'not_required', 'completed', 'waived'}
+
+COMMERCIAL_DECISION_STATUSES = [
+    'in_review',
+    'contacted',
+    'approved_for_fulfilment',
+    'rejected',
+    'closed',
+    'cancelled',
+]
+
+COMMERCIAL_STATUS_LABELS = {
+    status: status.replace('_', ' ').title()
+    for status in COMMERCIAL_REQUEST_STATUSES
+}
+
+COMMERCIAL_FULFILMENT_LABELS = {
+    'api_client_setup': 'API Client Setup Record',
+    'live_intelligence_access': 'Live Intelligence Access',
+    'upgrade_followup': 'Upgrade Follow-up',
+    'manual_note': 'Manual Note',
+}
+
+COMMERCIAL_FULFILMENT_REQUEST_TYPES = {
+    'api_client_setup': 'api_access',
+    'live_intelligence_access': 'live_intelligence',
+    'upgrade_followup': 'upgrade',
+}
 
 
 def admin_required(f):
@@ -659,6 +689,225 @@ def clean_admin_form_value(field_name):
     return value.strip() if value else ''
 
 
+def commercial_request_snapshot(commercial_request):
+    return {
+        'id': commercial_request.id,
+        'user_id': commercial_request.user_id,
+        'request_type': commercial_request.request_type,
+        'requested_product': commercial_request.requested_product,
+        'dataset_code': commercial_request.dataset_code,
+        'region_code': commercial_request.region_code,
+        'crop_name': commercial_request.crop_name,
+        'status': commercial_request.status,
+        'reviewed_by_user_id': commercial_request.reviewed_by_user_id,
+        'reviewed_at': commercial_request.reviewed_at.isoformat() if commercial_request.reviewed_at else None,
+        'review_notes': commercial_request.review_notes,
+    }
+
+
+def add_admin_commercial_request_audit(commercial_request, action, before_values=None, after_values=None):
+    db.session.add(AuditLog(
+        user_id=current_user.id,
+        organization_type='commercial_operations',
+        organization_id=commercial_request.user_id,
+        action=action,
+        entity_type='commercial_request',
+        entity_id=commercial_request.id,
+        before_values=before_values,
+        after_values=after_values,
+        ip_address=request.headers.get('X-Forwarded-For', request.remote_addr),
+        user_agent=request.headers.get('User-Agent'),
+    ))
+
+
+def commercial_request_queue_counts():
+    counts = {}
+    for status in COMMERCIAL_REQUEST_STATUSES:
+        counts[status] = CommercialRequest.query.filter_by(status=status).count()
+    return counts
+
+
+def commercial_request_related_context(commercial_request):
+    api_clients = []
+    live_accesses = []
+    if commercial_request.user_id:
+        api_clients = (
+            ApiClient.query.filter_by(owner_user_id=commercial_request.user_id)
+            .order_by(ApiClient.created_at.desc())
+            .limit(20)
+            .all()
+        )
+        live_accesses = (
+            LiveIntelligenceAccess.query.filter_by(user_id=commercial_request.user_id)
+            .order_by(LiveIntelligenceAccess.created_at.desc())
+            .limit(20)
+            .all()
+        )
+    fulfilment_actions = (
+        CommercialFulfilmentAction.query.filter_by(commercial_request_id=commercial_request.id)
+        .order_by(CommercialFulfilmentAction.created_at.desc(), CommercialFulfilmentAction.id.desc())
+        .all()
+    )
+    return {
+        'api_clients': api_clients,
+        'live_accesses': live_accesses,
+        'fulfilment_history': fulfilment_actions,
+    }
+
+
+def block_commercial_fulfilment(commercial_request, action_type, reason):
+    add_admin_commercial_request_audit(
+        commercial_request,
+        'admin_commercial_request_fulfilment_blocked',
+        before_values=commercial_request_snapshot(commercial_request),
+        after_values={
+            'action_type': action_type,
+            'reason': reason,
+            'api_client_created': False,
+            'api_key_created': False,
+            'live_intelligence_access_created': False,
+            'payment_flow_changed': False,
+        },
+    )
+
+
+def commercial_api_client_slug(commercial_request):
+    return f"commercial-request-{commercial_request.id}-api-client"
+
+
+def commercial_api_client_name(commercial_request):
+    owner = commercial_request.organization_name or (commercial_request.user.email if commercial_request.user else 'Subscriber')
+    return f"{owner} API Metadata Client"
+
+
+def parse_commercial_date(field_name):
+    value = clean_admin_form_value(field_name)
+    if not value:
+        return None
+    return datetime.strptime(value, '%Y-%m-%d')
+
+
+def parse_commercial_crops():
+    crops_text = clean_admin_form_value('crops')
+    return [crop.strip() for crop in crops_text.split(',') if crop.strip()]
+
+
+def create_commercial_fulfilment_action(commercial_request, action_type, notes, resulting_api_client=None, resulting_live_access=None, metadata=None):
+    fulfilment_action = CommercialFulfilmentAction(
+        commercial_request_id=commercial_request.id,
+        action_type=action_type,
+        status='recorded',
+        notes=notes,
+        performed_by_user_id=current_user.id,
+        resulting_api_client_id=resulting_api_client.id if resulting_api_client else None,
+        resulting_live_intelligence_access_id=resulting_live_access.id if resulting_live_access else None,
+        metadata_json=metadata or {},
+    )
+    db.session.add(fulfilment_action)
+    db.session.flush()
+    add_admin_commercial_request_audit(
+        commercial_request,
+        'admin_commercial_request_fulfilment_recorded',
+        before_values=None,
+        after_values={
+            'fulfilment_action_id': fulfilment_action.id,
+            'action_type': action_type,
+            'resulting_api_client_id': fulfilment_action.resulting_api_client_id,
+            'resulting_live_intelligence_access_id': fulfilment_action.resulting_live_intelligence_access_id,
+            'api_key_created': False,
+            'api_secret_exposed': False,
+            'api_key_hash_exposed': False,
+            'payment_flow_changed': False,
+            'auto_granted_on_submission': False,
+            **(metadata or {}),
+        },
+    )
+    return fulfilment_action
+
+
+def ensure_api_client_setup_record(commercial_request, notes):
+    slug = commercial_api_client_slug(commercial_request)
+    api_client = ApiClient.query.filter_by(slug=slug).first()
+    created = False
+    if not api_client:
+        requested_scopes = []
+        if isinstance(commercial_request.context_json, dict):
+            requested_scopes = commercial_request.context_json.get('requested_scopes') or []
+        api_client = ApiClient(
+            name=commercial_api_client_name(commercial_request),
+            slug=slug,
+            owner_user_id=commercial_request.user_id,
+            status='pending',
+            scopes=requested_scopes or ['document_metadata:read'],
+            notes=f"Created from commercial request #{commercial_request.id}. No API keys are created by Phase 4.2 fulfilment.",
+        )
+        db.session.add(api_client)
+        db.session.flush()
+        created = True
+    create_commercial_fulfilment_action(
+        commercial_request,
+        'api_client_setup',
+        notes,
+        resulting_api_client=api_client,
+        metadata={
+            'api_client_created': created,
+            'api_client_status': api_client.status,
+            'api_key_created': False,
+            'raw_secret_available': False,
+        },
+    )
+    return api_client
+
+
+def create_or_update_live_intelligence_from_request(commercial_request, notes):
+    start = parse_commercial_date('start_date')
+    end = parse_commercial_date('end_date')
+    regions = request.form.getlist('regions')
+    crops = parse_commercial_crops()
+    if not start or not end:
+        raise ValueError('Start date and end date are required for Live Intelligence fulfilment.')
+    if end <= start:
+        raise ValueError('End date must be after start date.')
+    if not regions:
+        raise ValueError('Select at least one region for Live Intelligence fulfilment.')
+
+    live_access = None
+    existing_id = clean_admin_form_value('live_access_id')
+    if existing_id:
+        live_access = LiveIntelligenceAccess.query.filter_by(
+            id=int(existing_id),
+            user_id=commercial_request.user_id,
+        ).first()
+    if not live_access:
+        live_access = LiveIntelligenceAccess(user_id=commercial_request.user_id)
+        db.session.add(live_access)
+
+    live_access.regions_allowed = len(regions)
+    live_access.crops_allowed = len(crops) if crops else None
+    live_access.regions_selected = regions
+    live_access.crops_selected = crops
+    live_access.start_date = start
+    live_access.end_date = end
+    live_access.active = True
+    live_access.notes = notes or f"Created from commercial request #{commercial_request.id}."
+    db.session.flush()
+
+    create_commercial_fulfilment_action(
+        commercial_request,
+        'live_intelligence_access',
+        notes,
+        resulting_live_access=live_access,
+        metadata={
+            'live_intelligence_access_id': live_access.id,
+            'regions_selected': regions,
+            'crops_selected': crops,
+            'active': live_access.active,
+            'explicit_admin_fulfilment': True,
+        },
+    )
+    return live_access
+
+
 def decision_notes_for_action(action):
     review_notes = clean_admin_form_value('review_notes')
     correction_reason = clean_admin_form_value('correction_reason')
@@ -729,6 +978,7 @@ def dashboard():
     ).count()
     pending_document_access_requests = DocumentAccessRequest.query.filter_by(status='pending').count()
     pending_commercial_requests = CommercialRequest.query.filter_by(status='pending').count()
+    commercial_requests_ready_for_fulfilment = CommercialRequest.query.filter_by(status='approved_for_fulfilment').count()
     
     recent_exports = ExportLog.query.order_by(ExportLog.exported_at.desc()).limit(10).all()
     
@@ -740,6 +990,7 @@ def dashboard():
                            pending_document_reviews=pending_document_reviews,
                            pending_document_access_requests=pending_document_access_requests,
                            pending_commercial_requests=pending_commercial_requests,
+                           commercial_requests_ready_for_fulfilment=commercial_requests_ready_for_fulfilment,
                            recent_exports=recent_exports)
 
 
@@ -760,6 +1011,9 @@ def commercial_dashboard():
                 'commercial_live_intelligence_request_created',
                 'commercial_api_access_request_created',
                 'commercial_upgrade_request_created',
+                'admin_commercial_request_status_updated',
+                'admin_commercial_request_fulfilment_recorded',
+                'admin_commercial_request_fulfilment_blocked',
                 'subscriber_document_access_request_blocked',
                 'subscriber_document_access_requested',
                 'api_document_metadata_unauthorized',
@@ -790,6 +1044,150 @@ def commercial_dashboard():
         recent_gated_audit_events=recent_gated_audit_events,
         recent_gated_document_events=recent_gated_document_events,
     )
+
+
+@admin_bp.route('/commercial-requests')
+@login_required
+@admin_required
+def commercial_requests():
+    status_filter = request.args.get('status', '').strip()
+    type_filter = request.args.get('request_type', '').strip()
+
+    query = CommercialRequest.query
+    if status_filter in COMMERCIAL_REQUEST_STATUSES:
+        query = query.filter_by(status=status_filter)
+    else:
+        status_filter = ''
+    if type_filter:
+        query = query.filter_by(request_type=type_filter)
+
+    requests = (
+        query.order_by(CommercialRequest.created_at.desc(), CommercialRequest.id.desc())
+        .all()
+    )
+    return render_template(
+        'admin/commercial_requests.html',
+        commercial_requests=requests,
+        selected_status=status_filter,
+        selected_type=type_filter,
+        statuses=COMMERCIAL_REQUEST_STATUSES,
+        status_labels=COMMERCIAL_STATUS_LABELS,
+        counts=commercial_request_queue_counts(),
+    )
+
+
+@admin_bp.route('/commercial-requests/<int:request_id>')
+@login_required
+@admin_required
+def commercial_request_detail(request_id):
+    commercial_request = CommercialRequest.query.get_or_404(request_id)
+    return render_template(
+        'admin/commercial_request_detail.html',
+        commercial_request=commercial_request,
+        status_options=COMMERCIAL_DECISION_STATUSES,
+        status_labels=COMMERCIAL_STATUS_LABELS,
+        fulfilment_action_types=COMMERCIAL_FULFILMENT_ACTION_TYPES,
+        fulfilment_labels=COMMERCIAL_FULFILMENT_LABELS,
+        regions=NIGERIA_REGIONS,
+        **commercial_request_related_context(commercial_request),
+    )
+
+
+@admin_bp.route('/commercial-requests/<int:request_id>/decision', methods=['POST'])
+@login_required
+@admin_required
+def commercial_request_decision(request_id):
+    commercial_request = CommercialRequest.query.get_or_404(request_id)
+    selected_status = clean_admin_form_value('status')
+    if selected_status not in COMMERCIAL_DECISION_STATUSES:
+        flash('Please choose a supported commercial request status.', 'error')
+        return redirect(url_for('admin.commercial_request_detail', request_id=commercial_request.id))
+
+    before_values = commercial_request_snapshot(commercial_request)
+    commercial_request.status = selected_status
+    commercial_request.review_notes = clean_admin_form_value('review_notes')
+    commercial_request.reviewed_by_user_id = current_user.id
+    commercial_request.reviewed_at = datetime.utcnow()
+    after_values = commercial_request_snapshot(commercial_request)
+    add_admin_commercial_request_audit(
+        commercial_request,
+        'admin_commercial_request_status_updated',
+        before_values=before_values,
+        after_values={
+            **after_values,
+            'access_granted': False,
+            'payment_flow_changed': False,
+        },
+    )
+    db.session.commit()
+    flash('Commercial request status updated.', 'success')
+    return redirect(url_for('admin.commercial_request_detail', request_id=commercial_request.id))
+
+
+@admin_bp.route('/commercial-requests/<int:request_id>/fulfilment', methods=['POST'])
+@login_required
+@admin_required
+def commercial_request_fulfilment(request_id):
+    commercial_request = CommercialRequest.query.get_or_404(request_id)
+    action_type = clean_admin_form_value('action_type')
+    notes = clean_admin_form_value('notes')
+
+    if action_type not in COMMERCIAL_FULFILMENT_ACTION_TYPES:
+        flash('Please choose a supported fulfilment action.', 'error')
+        return redirect(url_for('admin.commercial_request_detail', request_id=commercial_request.id))
+
+    required_request_type = COMMERCIAL_FULFILMENT_REQUEST_TYPES.get(action_type)
+    if required_request_type and commercial_request.request_type != required_request_type:
+        reason = f"{action_type} is only valid for {required_request_type} requests."
+        block_commercial_fulfilment(commercial_request, action_type, reason)
+        db.session.commit()
+        flash(reason, 'error')
+        return redirect(url_for('admin.commercial_request_detail', request_id=commercial_request.id))
+
+    if action_type != 'manual_note' and commercial_request.status != 'approved_for_fulfilment':
+        reason = 'Fulfilment actions require approved for fulfilment status.'
+        block_commercial_fulfilment(commercial_request, action_type, reason)
+        db.session.commit()
+        flash(reason, 'error')
+        return redirect(url_for('admin.commercial_request_detail', request_id=commercial_request.id))
+
+    try:
+        if action_type == 'api_client_setup':
+            api_client = ensure_api_client_setup_record(commercial_request, notes)
+            flash(f'API client setup record captured for {api_client.name}. No API key was created.', 'success')
+        elif action_type == 'live_intelligence_access':
+            live_access = create_or_update_live_intelligence_from_request(commercial_request, notes)
+            flash(f'Live Intelligence access recorded through {live_access.end_date.strftime("%Y-%m-%d")}.', 'success')
+        elif action_type == 'upgrade_followup':
+            create_commercial_fulfilment_action(
+                commercial_request,
+                action_type,
+                notes,
+                metadata={
+                    'payment_flow_changed': False,
+                    'subscription_created': False,
+                    'license_created': False,
+                    'upgrade_status_recorded_only': True,
+                },
+            )
+            flash('Upgrade follow-up recorded. Payment provider flows were not changed.', 'success')
+        else:
+            create_commercial_fulfilment_action(
+                commercial_request,
+                'manual_note',
+                notes,
+                metadata={
+                    'manual_note_only': True,
+                    'access_created': False,
+                    'payment_flow_changed': False,
+                },
+            )
+            flash('Commercial fulfilment note recorded.', 'success')
+        db.session.commit()
+    except ValueError as exc:
+        db.session.rollback()
+        flash(str(exc), 'error')
+    return redirect(url_for('admin.commercial_request_detail', request_id=commercial_request.id))
 
 
 @admin_bp.route('/api-dashboard')

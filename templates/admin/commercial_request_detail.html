@@ -1,0 +1,181 @@
+{% extends "base.html" %}
+
+{% block title %}Commercial Request #{{ commercial_request.id }} - FieldSight Africa{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="mb-8">
+        <a href="{{ url_for('admin.commercial_requests') }}" class="text-primary hover:underline text-sm">&larr; Back to Commercial Requests</a>
+        <div class="mt-3 flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+            <div>
+                <h1 class="text-3xl font-bold text-gray-900">Commercial Request #{{ commercial_request.id }}</h1>
+                <p class="text-gray-600 mt-1">{{ commercial_request.request_type|replace('_', ' ')|title }} from {{ commercial_request.organization_name or (commercial_request.user.email if commercial_request.user else 'subscriber') }}</p>
+            </div>
+            <span class="inline-flex px-3 py-1 rounded-full bg-amber-100 text-amber-800 text-sm font-medium">
+                {{ status_labels.get(commercial_request.status, commercial_request.status) }}
+            </span>
+        </div>
+    </div>
+
+    <div class="grid lg:grid-cols-3 gap-6 mb-8">
+        <section class="bg-white rounded-xl shadow-sm border p-6 lg:col-span-2">
+            <h2 class="text-xl font-semibold text-gray-900 mb-5">Request Context</h2>
+            <dl class="grid md:grid-cols-2 gap-4 text-sm">
+                <div>
+                    <dt class="text-gray-500">Subscriber</dt>
+                    <dd class="text-gray-900 font-medium">{{ commercial_request.user.email if commercial_request.user else 'Unknown' }}</dd>
+                </div>
+                <div>
+                    <dt class="text-gray-500">Organization</dt>
+                    <dd class="text-gray-900 font-medium">{{ commercial_request.organization_name or 'Not provided' }}</dd>
+                </div>
+                <div>
+                    <dt class="text-gray-500">Product</dt>
+                    <dd class="text-gray-900 font-medium">{{ commercial_request.requested_product or 'General commercial enquiry' }}</dd>
+                </div>
+                <div>
+                    <dt class="text-gray-500">Scope</dt>
+                    <dd class="text-gray-900 font-medium">
+                        {{ commercial_request.dataset_code or 'Any dataset' }} /
+                        {{ commercial_request.region_code or 'Any region' }} /
+                        {{ commercial_request.crop_name or 'Any crop' }}
+                    </dd>
+                </div>
+                <div>
+                    <dt class="text-gray-500">Contact</dt>
+                    <dd class="text-gray-900 font-medium">{{ commercial_request.contact_name or 'Not provided' }}{% if commercial_request.contact_email %} &lt;{{ commercial_request.contact_email }}&gt;{% endif %}</dd>
+                </div>
+                <div>
+                    <dt class="text-gray-500">Submitted</dt>
+                    <dd class="text-gray-900 font-medium">{{ commercial_request.created_at.strftime('%Y-%m-%d %H:%M') if commercial_request.created_at else '' }}</dd>
+                </div>
+            </dl>
+            <div class="mt-5">
+                <h3 class="text-sm font-medium text-gray-700 mb-2">Subscriber Message</h3>
+                <p class="text-sm text-gray-700 whitespace-pre-line">{{ commercial_request.message or 'No message provided.' }}</p>
+            </div>
+            <div class="mt-5">
+                <h3 class="text-sm font-medium text-gray-700 mb-2">Captured Context</h3>
+                <pre class="bg-gray-50 border rounded-lg p-4 text-xs text-gray-700 overflow-x-auto">{{ commercial_request.context_json|tojson }}</pre>
+            </div>
+        </section>
+
+        <section class="bg-white rounded-xl shadow-sm border p-6">
+            <h2 class="text-xl font-semibold text-gray-900 mb-5">Decision Workflow</h2>
+            <form method="POST" action="{{ url_for('admin.commercial_request_decision', request_id=commercial_request.id) }}" class="space-y-4">
+                <div>
+                    <label for="status" class="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                    <select id="status" name="status" class="w-full rounded-lg border border-gray-300 px-3 py-2">
+                        {% for status in status_options %}
+                        <option value="{{ status }}" {% if commercial_request.status == status %}selected{% endif %}>{{ status_labels.get(status, status) }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label for="review_notes" class="block text-sm font-medium text-gray-700 mb-1">Decision Notes</label>
+                    <textarea id="review_notes" name="review_notes" rows="5" class="w-full rounded-lg border border-gray-300 px-3 py-2">{{ commercial_request.review_notes or '' }}</textarea>
+                </div>
+                <p class="text-xs text-gray-600">Status updates do not create subscriptions, licences, API keys, Live Intelligence access, or payment changes.</p>
+                <button type="submit" class="w-full px-5 py-2 rounded-lg bg-primary text-white hover:bg-secondary">Save Decision</button>
+            </form>
+        </section>
+    </div>
+
+    <div class="grid lg:grid-cols-2 gap-6 mb-8">
+        <section class="bg-white rounded-xl shadow-sm border p-6">
+            <h2 class="text-xl font-semibold text-gray-900 mb-5">Controlled Fulfilment</h2>
+            <form method="POST" action="{{ url_for('admin.commercial_request_fulfilment', request_id=commercial_request.id) }}" class="space-y-4">
+                <div>
+                    <label for="action_type" class="block text-sm font-medium text-gray-700 mb-1">Action</label>
+                    <select id="action_type" name="action_type" class="w-full rounded-lg border border-gray-300 px-3 py-2">
+                        {% for action_type in fulfilment_action_types %}
+                        <option value="{{ action_type }}">{{ fulfilment_labels.get(action_type, action_type) }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label for="notes" class="block text-sm font-medium text-gray-700 mb-1">Fulfilment Notes</label>
+                    <textarea id="notes" name="notes" rows="4" class="w-full rounded-lg border border-gray-300 px-3 py-2" placeholder="Record what happened next."></textarea>
+                </div>
+                <div class="border rounded-lg p-4 bg-gray-50">
+                    <h3 class="text-sm font-semibold text-gray-900 mb-3">Live Intelligence Fields</h3>
+                    <div class="grid md:grid-cols-2 gap-3">
+                        <div>
+                            <label for="start_date" class="block text-xs font-medium text-gray-700 mb-1">Start Date</label>
+                            <input id="start_date" name="start_date" type="date" class="w-full rounded-lg border border-gray-300 px-3 py-2">
+                        </div>
+                        <div>
+                            <label for="end_date" class="block text-xs font-medium text-gray-700 mb-1">End Date</label>
+                            <input id="end_date" name="end_date" type="date" class="w-full rounded-lg border border-gray-300 px-3 py-2">
+                        </div>
+                    </div>
+                    <div class="grid sm:grid-cols-2 gap-2 mt-3">
+                        {% for code, name in regions.items() %}
+                        <label class="flex items-center gap-2 text-sm text-gray-700">
+                            <input type="checkbox" name="regions" value="{{ code }}" class="rounded border-gray-300">
+                            <span>{{ code }} - {{ name }}</span>
+                        </label>
+                        {% endfor %}
+                    </div>
+                    <label for="crops" class="block text-xs font-medium text-gray-700 mt-3 mb-1">Crops</label>
+                    <input id="crops" name="crops" type="text" class="w-full rounded-lg border border-gray-300 px-3 py-2" placeholder="Comma-separated crop names">
+                </div>
+                <p class="text-xs text-gray-600">Concrete fulfilment actions require approved for fulfilment status. API setup creates no API key or secret. Upgrade follow-up changes no Stripe or Paystack flow.</p>
+                <button type="submit" class="w-full px-5 py-2 rounded-lg bg-primary text-white hover:bg-secondary">Record Fulfilment Action</button>
+            </form>
+        </section>
+
+        <section class="bg-white rounded-xl shadow-sm border overflow-hidden">
+            <div class="px-6 py-4 border-b">
+                <h2 class="text-xl font-semibold text-gray-900">Fulfilment History</h2>
+            </div>
+            <div class="divide-y">
+                {% for action in fulfilment_history %}
+                <div class="px-6 py-4 text-sm">
+                    <p class="font-medium text-gray-900">{{ fulfilment_labels.get(action.action_type, action.action_type) }} - {{ action.status|title }}</p>
+                    <p class="text-gray-600 mt-1">{{ action.notes or 'No notes recorded.' }}</p>
+                    <p class="text-xs text-gray-500 mt-2">{{ action.performed_by_user.email if action.performed_by_user else 'Admin' }} - {{ action.created_at.strftime('%Y-%m-%d %H:%M') if action.created_at else '' }}</p>
+                </div>
+                {% else %}
+                <p class="px-6 py-8 text-center text-gray-500">No fulfilment actions recorded yet.</p>
+                {% endfor %}
+            </div>
+        </section>
+    </div>
+
+    <div class="grid lg:grid-cols-2 gap-6">
+        <section class="bg-white rounded-xl shadow-sm border overflow-hidden">
+            <div class="px-6 py-4 border-b">
+                <h2 class="text-xl font-semibold text-gray-900">Related API Clients</h2>
+            </div>
+            <div class="divide-y">
+                {% for client in api_clients %}
+                <div class="px-6 py-4 text-sm">
+                    <p class="font-medium text-gray-900">{{ client.name }} - {{ client.status|title }}</p>
+                    <p class="text-gray-600">Scopes: {{ client.scopes|join(', ') if client.scopes else 'None' }}</p>
+                </div>
+                {% else %}
+                <p class="px-6 py-8 text-center text-gray-500">No API client records are attached to this subscriber.</p>
+                {% endfor %}
+            </div>
+        </section>
+
+        <section class="bg-white rounded-xl shadow-sm border overflow-hidden">
+            <div class="px-6 py-4 border-b">
+                <h2 class="text-xl font-semibold text-gray-900">Related Live Intelligence Access</h2>
+            </div>
+            <div class="divide-y">
+                {% for access in live_accesses %}
+                <div class="px-6 py-4 text-sm">
+                    <p class="font-medium text-gray-900">{{ 'Active' if access.active else 'Inactive' }} through {{ access.end_date.strftime('%Y-%m-%d') if access.end_date else 'no end date' }}</p>
+                    <p class="text-gray-600">Regions: {{ access.regions_selected|join(', ') if access.regions_selected else 'None' }}</p>
+                    <p class="text-gray-600">Crops: {{ access.crops_selected|join(', ') if access.crops_selected else 'Not scoped' }}</p>
+                </div>
+                {% else %}
+                <p class="px-6 py-8 text-center text-gray-500">No Live Intelligence access records are attached to this subscriber.</p>
+                {% endfor %}
+            </div>
+        </section>
+    </div>
+</div>
+{% endblock %}
