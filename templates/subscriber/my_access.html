@@ -241,16 +241,19 @@
         </section>
 
         <section class="bg-white rounded-xl shadow-sm border p-6">
-            <h2 class="text-xl font-semibold text-gray-900 mb-5">Restricted Document Requests</h2>
+            <div class="flex items-center justify-between gap-3 mb-5">
+                <h2 class="text-xl font-semibold text-gray-900">Restricted Document Requests</h2>
+                <a href="{{ url_for('subscriber.document_access_requests') }}" class="text-sm text-primary hover:underline">View all</a>
+            </div>
             <div class="space-y-3">
                 {% for access_request in access_requests %}
-                <div class="rounded-lg border border-gray-200 p-4">
+                <a href="{{ url_for('subscriber.document_access_request_detail', request_id=access_request.id) }}" class="block rounded-lg border border-gray-200 p-4 hover:border-primary">
                     <div class="flex items-center justify-between gap-3">
                         <span class="font-medium text-gray-900">{{ access_request.request_type|replace('_', ' ')|title }}</span>
                         <span class="text-sm text-gray-600">{{ access_request.status|replace('_', ' ')|title }}</span>
                     </div>
                     <p class="text-sm text-gray-600 mt-1">{{ access_request.organization_name or current_user.name }}</p>
-                </div>
+                </a>
                 {% else %}
                 <p class="text-sm text-gray-600">No restricted document access requests have been submitted yet.</p>
                 {% endfor %}

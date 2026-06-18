@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+
+{% block title %}Document Access Requests - FieldSight Africa{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="mb-8">
+        <a href="{{ url_for('subscriber.my_access') }}" class="text-primary hover:underline text-sm">&larr; Back to My Access</a>
+        <h1 class="text-3xl font-bold text-gray-900 mt-3">Document Access Requests</h1>
+        <p class="text-gray-600 mt-1">Track restricted document access requests submitted by your account.</p>
+    </div>
+
+    <section class="bg-white rounded-xl shadow-sm border overflow-hidden">
+        <div class="px-6 py-4 border-b flex items-center justify-between gap-3">
+            <h2 class="text-xl font-semibold text-gray-900">Request Status</h2>
+            <a href="{{ url_for('subscriber.new_document_access_request') }}" class="text-sm text-primary hover:underline">New request</a>
+        </div>
+        <div class="divide-y">
+            {% for access_request in access_requests %}
+            <a href="{{ url_for('subscriber.document_access_request_detail', request_id=access_request.id) }}" class="block px-6 py-4 hover:bg-gray-50">
+                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                    <div>
+                        <p class="font-medium text-gray-900">{{ access_request.request_type|replace('_', ' ')|title }}</p>
+                        <p class="text-sm text-gray-600">
+                            {{ access_request.actor_document.document_type.name if access_request.actor_document and access_request.actor_document.document_type else 'Document metadata' }}
+                        </p>
+                    </div>
+                    <div class="text-sm text-gray-600 sm:text-right">
+                        <p>{{ access_request.status|replace('_', ' ')|title }}</p>
+                        <p>{{ access_request.created_at.strftime('%Y-%m-%d') if access_request.created_at else '' }}</p>
+                    </div>
+                </div>
+            </a>
+            {% else %}
+            <div class="px-6 py-8 text-center text-gray-500">
+                <p>No restricted document access requests have been submitted yet.</p>
+                <a href="{{ url_for('subscriber.new_document_access_request') }}" class="inline-block mt-3 text-primary hover:underline">Start a request</a>
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+</div>
+{% endblock %}

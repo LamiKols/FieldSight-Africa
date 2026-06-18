@@ -155,9 +155,19 @@ DOCUMENT_ACCESS_REQUEST_TYPES = [
 
 DOCUMENT_ACCESS_REQUEST_STATUSES = [
     "pending",
+    "in_review",
+    "needs_information",
+    "approved_for_redacted_access",
     "approved",
     "rejected",
+    "closed",
     "cancelled",
+]
+
+DOCUMENT_ACCESS_FULFILMENT_ACTION_TYPES = [
+    "redacted_access_recorded",
+    "restricted_full_document_review_recorded",
+    "manual_note",
 ]
 
 COMMERCIAL_REQUEST_TYPES = [
@@ -1096,6 +1106,22 @@ class DocumentAccessRequest(TimestampMixin, db.Model):
     user = db.relationship('User', foreign_keys=[user_id], backref='document_access_requests')
     api_client = db.relationship('ApiClient', backref='document_access_requests')
     reviewed_by_user = db.relationship('User', foreign_keys=[reviewed_by_user_id], backref='reviewed_document_access_requests')
+
+
+class DocumentAccessFulfilmentAction(TimestampMixin, db.Model):
+    __tablename__ = 'document_access_fulfilment_actions'
+
+    id = db.Column(db.Integer, primary_key=True)
+    document_access_request_id = db.Column(db.Integer, db.ForeignKey('document_access_requests.id'), nullable=False)
+    action_type = db.Column(db.String(80), nullable=False)
+    status = db.Column(db.String(50), default='recorded')
+    visibility_level = db.Column(db.String(50), default='redacted_document_candidate')
+    notes = db.Column(db.Text)
+    performed_by_user_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+    metadata_json = db.Column(db.JSON, default=dict)
+
+    document_access_request = db.relationship('DocumentAccessRequest', backref='fulfilment_actions')
+    performed_by_user = db.relationship('User', foreign_keys=[performed_by_user_id], backref='document_access_fulfilment_actions')
 
 
 class CommercialRequest(TimestampMixin, db.Model):

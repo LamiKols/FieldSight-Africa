@@ -19,7 +19,10 @@ from models import (
     COMMERCIAL_REQUEST_STATUSES,
     CommercialFulfilmentAction,
     CommercialRequest,
+    DOCUMENT_ACCESS_FULFILMENT_ACTION_TYPES,
+    DOCUMENT_ACCESS_REQUEST_STATUSES,
     DocumentAccessLog,
+    DocumentAccessFulfilmentAction,
     DocumentAccessRequest,
     DocumentExtractionRun,
     DocumentFieldReconciliation,
@@ -48,6 +51,13 @@ from models import (
     actor_can_share_documents,
     consent_document_category_for_document_type,
     get_active_actor_consent,
+)
+from document_access import (
+    ACCESS_REQUEST_TARGET_BY_TYPE,
+    document_metadata_access_decision,
+    document_publish_control,
+    request_target_allows,
+    safe_document_metadata_payload,
 )
 from routes.partner import (
     PREVIEWABLE_DOCUMENT_EXTENSIONS,
@@ -220,6 +230,32 @@ COMMERCIAL_FULFILMENT_REQUEST_TYPES = {
     'api_client_setup': 'api_access',
     'live_intelligence_access': 'live_intelligence',
     'upgrade_followup': 'upgrade',
+}
+
+DUE_DILIGENCE_DECISION_STATUSES = [
+    'in_review',
+    'needs_information',
+    'approved_for_redacted_access',
+    'rejected',
+    'closed',
+    'cancelled',
+]
+
+DUE_DILIGENCE_STATUS_LABELS = {
+    status: status.replace('_', ' ').title()
+    for status in DOCUMENT_ACCESS_REQUEST_STATUSES
+}
+
+DUE_DILIGENCE_FULFILMENT_LABELS = {
+    'redacted_access_recorded': 'Redacted Access Fulfilment Recorded',
+    'restricted_full_document_review_recorded': 'Restricted Full-Document Review Recorded',
+    'manual_note': 'Manual Note',
+}
+
+DUE_DILIGENCE_VISIBILITY_LABELS = {
+    'metadata_only': 'Metadata Only Visibility',
+    'redacted_document_candidate': 'Redacted Access Candidate',
+    'full_document_restricted_candidate': 'Restricted Full-Document Candidate',
 }
 
 
@@ -908,6 +944,200 @@ def create_or_update_live_intelligence_from_request(commercial_request, notes):
     return live_access
 
 
+def due_diligence_request_snapshot(access_request):
+    return {
+        'id': access_request.id,
+        'actor_document_id': access_request.actor_document_id,
+        'user_id': access_request.user_id,
+        'api_client_id': access_request.api_client_id,
+        'request_type': access_request.request_type,
+        'request_channel': access_request.request_channel,
+        'organization_name': access_request.organization_name,
+        'status': access_request.status,
+        'reviewed_by_user_id': access_request.reviewed_by_user_id,
+        'reviewed_at': access_request.reviewed_at.isoformat() if access_request.reviewed_at else None,
+        'review_notes': access_request.review_notes,
+    }
+
+
+def add_admin_due_diligence_audit(access_request, action, before_values=None, after_values=None):
+    db.session.add(AuditLog(
+        user_id=current_user.id,
+        organization_type='due_diligence',
+        organization_id=access_request.user_id,
+        action=action,
+        entity_type='document_access_request',
+        entity_id=access_request.id,
+        before_values=before_values,
+        after_values=after_values,
+        ip_address=request.headers.get('X-Forwarded-For', request.remote_addr),
+        user_agent=request.headers.get('User-Agent'),
+    ))
+
+
+def due_diligence_request_counts():
+    counts = {}
+    for status in DOCUMENT_ACCESS_REQUEST_STATUSES:
+        counts[status] = DocumentAccessRequest.query.filter_by(status=status).count()
+    return counts
+
+
+def due_diligence_review_history(access_request):
+    return (
+        AuditLog.query.filter_by(entity_type='document_access_request', entity_id=access_request.id)
+        .order_by(AuditLog.created_at.desc(), AuditLog.id.desc())
+        .all()
+    )
+
+
+def due_diligence_fulfilment_history(access_request):
+    return (
+        DocumentAccessFulfilmentAction.query.filter_by(document_access_request_id=access_request.id)
+        .order_by(DocumentAccessFulfilmentAction.created_at.desc(), DocumentAccessFulfilmentAction.id.desc())
+        .all()
+    )
+
+
+def due_diligence_request_context(access_request):
+    document = access_request.actor_document
+    user = access_request.user
+    metadata_allowed = False
+    metadata_reasons = ['No requester user is linked to this access request.']
+    metadata_control = None
+    extraction_run = None
+    if user and document:
+        metadata_allowed, metadata_reasons, metadata_control, extraction_run = document_metadata_access_decision(
+            user,
+            document,
+            'subscriber_portal',
+        )
+
+    target_allowed = False
+    target_reason = 'No document is linked to this access request.'
+    target_control = None
+    if document:
+        target_allowed, target_reason, target_control = request_target_allows(document, access_request.request_type)
+
+    document_category = consent_document_category_for_document_type(document.document_type) if document else None
+    actor = document.market_actor if document else None
+    active_consent = get_active_actor_consent(actor)
+    consent_ok = bool(document and actor_can_share_documents(actor, 'subscriber_portal', document_category))
+    buyer_consent_ok = bool(document and actor_can_share_documents(actor, 'approved_buyer_due_diligence', document_category))
+
+    redacted_control = document_publish_control(document, 'redacted_document_candidate') if document else None
+    full_control = document_publish_control(document, 'full_document_restricted_candidate') if document else None
+    safe_metadata = safe_document_metadata_payload(document, 'subscriber_portal', publish_control=metadata_control) if document else {}
+
+    return {
+        'document': document,
+        'safe_metadata': safe_metadata,
+        'metadata_allowed': metadata_allowed,
+        'metadata_reasons': metadata_reasons,
+        'metadata_control': metadata_control,
+        'target_allowed': target_allowed,
+        'target_reason': target_reason,
+        'target_control': target_control,
+        'target_code': ACCESS_REQUEST_TARGET_BY_TYPE.get(access_request.request_type),
+        'redacted_control': redacted_control,
+        'full_control': full_control,
+        'document_category': document_category,
+        'active_consent': active_consent,
+        'consent_ok': consent_ok,
+        'buyer_consent_ok': buyer_consent_ok,
+        'extraction_run': extraction_run,
+        'approval_allowed': bool(metadata_allowed and target_allowed),
+        'review_history': due_diligence_review_history(access_request),
+        'fulfilment_history': due_diligence_fulfilment_history(access_request),
+    }
+
+
+def block_due_diligence_decision(access_request, requested_status, context, reason):
+    add_admin_due_diligence_audit(
+        access_request,
+        'admin_due_diligence_decision_blocked',
+        before_values=due_diligence_request_snapshot(access_request),
+        after_values={
+            'requested_status': requested_status,
+            'reason': reason,
+            'metadata_allowed': context.get('metadata_allowed'),
+            'metadata_reasons': context.get('metadata_reasons'),
+            'target_allowed': context.get('target_allowed'),
+            'target_reason': context.get('target_reason'),
+            'access_granted': False,
+            'file_exposed': False,
+        },
+    )
+
+
+def block_due_diligence_fulfilment(access_request, action_type, context, reason):
+    add_admin_due_diligence_audit(
+        access_request,
+        'admin_due_diligence_fulfilment_blocked',
+        before_values=due_diligence_request_snapshot(access_request),
+        after_values={
+            'action_type': action_type,
+            'reason': reason,
+            'metadata_allowed': context.get('metadata_allowed'),
+            'target_allowed': context.get('target_allowed'),
+            'file_exposed': False,
+            'storage_path_exposed': False,
+        },
+    )
+
+
+def create_due_diligence_fulfilment_action(access_request, action_type, notes, visibility_level, context):
+    fulfilment_action = DocumentAccessFulfilmentAction(
+        document_access_request_id=access_request.id,
+        action_type=action_type,
+        status='recorded',
+        visibility_level=visibility_level,
+        notes=notes,
+        performed_by_user_id=current_user.id,
+        metadata_json={
+            'target_code': context.get('target_code'),
+            'metadata_allowed': context.get('metadata_allowed'),
+            'target_allowed': context.get('target_allowed'),
+            'file_exposed': False,
+            'download_created': False,
+            'storage_path_exposed': False,
+            'original_filename_exposed': False,
+            'hash_exposed': False,
+        },
+    )
+    db.session.add(fulfilment_action)
+    db.session.flush()
+
+    if access_request.actor_document:
+        db.session.add(DocumentAccessLog(
+            actor_document_id=access_request.actor_document_id,
+            user_id=access_request.user_id,
+            api_client_id=access_request.api_client_id,
+            access_type='admin_due_diligence_fulfilment_recorded',
+            access_channel='admin_due_diligence',
+            subscriber_organization_name=access_request.organization_name,
+            visibility_level=visibility_level,
+            ip_address=request.headers.get('X-Forwarded-For', request.remote_addr),
+            user_agent=request.headers.get('User-Agent'),
+        ))
+
+    add_admin_due_diligence_audit(
+        access_request,
+        'admin_due_diligence_fulfilment_recorded',
+        before_values=None,
+        after_values={
+            'fulfilment_action_id': fulfilment_action.id,
+            'action_type': action_type,
+            'visibility_level': visibility_level,
+            'target_code': context.get('target_code'),
+            'file_exposed': False,
+            'download_created': False,
+            'storage_path_exposed': False,
+            'payment_flow_changed': False,
+        },
+    )
+    return fulfilment_action
+
+
 def decision_notes_for_action(action):
     review_notes = clean_admin_form_value('review_notes')
     correction_reason = clean_admin_form_value('correction_reason')
@@ -977,6 +1207,9 @@ def dashboard():
         ActorDocument.review_status.in_(['pending', 'needs_correction', 'redaction_required']),
     ).count()
     pending_document_access_requests = DocumentAccessRequest.query.filter_by(status='pending').count()
+    active_due_diligence_requests = DocumentAccessRequest.query.filter(
+        DocumentAccessRequest.status.in_(['pending', 'in_review', 'needs_information'])
+    ).count()
     pending_commercial_requests = CommercialRequest.query.filter_by(status='pending').count()
     commercial_requests_ready_for_fulfilment = CommercialRequest.query.filter_by(status='approved_for_fulfilment').count()
     
@@ -989,6 +1222,7 @@ def dashboard():
                            total_exports=total_exports,
                            pending_document_reviews=pending_document_reviews,
                            pending_document_access_requests=pending_document_access_requests,
+                           active_due_diligence_requests=active_due_diligence_requests,
                            pending_commercial_requests=pending_commercial_requests,
                            commercial_requests_ready_for_fulfilment=commercial_requests_ready_for_fulfilment,
                            recent_exports=recent_exports)
@@ -1444,8 +1678,141 @@ def document_access_requests():
         'admin/document_access_requests.html',
         access_requests=requests,
         selected_status=status_filter,
-        statuses=['pending', 'approved', 'rejected', 'cancelled'],
+        statuses=DOCUMENT_ACCESS_REQUEST_STATUSES,
     )
+
+
+@admin_bp.route('/due-diligence-requests')
+@login_required
+@admin_required
+def due_diligence_requests():
+    status_filter = request.args.get('status', '').strip()
+    type_filter = request.args.get('request_type', '').strip()
+
+    query = DocumentAccessRequest.query
+    if status_filter in DOCUMENT_ACCESS_REQUEST_STATUSES:
+        query = query.filter_by(status=status_filter)
+    else:
+        status_filter = ''
+    if type_filter:
+        query = query.filter_by(request_type=type_filter)
+
+    requests = query.order_by(DocumentAccessRequest.created_at.desc(), DocumentAccessRequest.id.desc()).all()
+    return render_template(
+        'admin/due_diligence_requests.html',
+        access_requests=requests,
+        statuses=DOCUMENT_ACCESS_REQUEST_STATUSES,
+        selected_status=status_filter,
+        selected_type=type_filter,
+        status_labels=DUE_DILIGENCE_STATUS_LABELS,
+        counts=due_diligence_request_counts(),
+    )
+
+
+@admin_bp.route('/due-diligence-requests/<int:request_id>')
+@login_required
+@admin_required
+def due_diligence_request_detail(request_id):
+    access_request = DocumentAccessRequest.query.get_or_404(request_id)
+    return render_template(
+        'admin/due_diligence_request_detail.html',
+        access_request=access_request,
+        status_options=DUE_DILIGENCE_DECISION_STATUSES,
+        status_labels=DUE_DILIGENCE_STATUS_LABELS,
+        fulfilment_action_types=DOCUMENT_ACCESS_FULFILMENT_ACTION_TYPES,
+        fulfilment_labels=DUE_DILIGENCE_FULFILMENT_LABELS,
+        visibility_labels=DUE_DILIGENCE_VISIBILITY_LABELS,
+        **due_diligence_request_context(access_request),
+    )
+
+
+@admin_bp.route('/due-diligence-requests/<int:request_id>/decision', methods=['POST'])
+@login_required
+@admin_required
+def due_diligence_request_decision(request_id):
+    access_request = DocumentAccessRequest.query.get_or_404(request_id)
+    selected_status = clean_admin_form_value('status')
+    if selected_status not in DUE_DILIGENCE_DECISION_STATUSES:
+        flash('Please choose a supported due diligence status.', 'error')
+        return redirect(url_for('admin.due_diligence_request_detail', request_id=access_request.id))
+
+    context = due_diligence_request_context(access_request)
+    if selected_status == 'approved_for_redacted_access' and not context['approval_allowed']:
+        reason = 'Approval requires metadata entitlement plus the requested document access publish target to be ready or waived.'
+        block_due_diligence_decision(access_request, selected_status, context, reason)
+        db.session.commit()
+        flash(reason, 'error')
+        return redirect(url_for('admin.due_diligence_request_detail', request_id=access_request.id))
+
+    before_values = due_diligence_request_snapshot(access_request)
+    access_request.status = selected_status
+    access_request.review_notes = clean_admin_form_value('review_notes')
+    access_request.reviewed_by_user_id = current_user.id
+    access_request.reviewed_at = datetime.utcnow()
+    after_values = due_diligence_request_snapshot(access_request)
+    add_admin_due_diligence_audit(
+        access_request,
+        'admin_due_diligence_request_status_updated',
+        before_values=before_values,
+        after_values={
+            **after_values,
+            'metadata_allowed': context['metadata_allowed'],
+            'target_allowed': context['target_allowed'],
+            'access_granted': False,
+            'file_exposed': False,
+            'payment_flow_changed': False,
+        },
+    )
+    db.session.commit()
+    flash('Due diligence request status updated.', 'success')
+    return redirect(url_for('admin.due_diligence_request_detail', request_id=access_request.id))
+
+
+@admin_bp.route('/due-diligence-requests/<int:request_id>/fulfilment', methods=['POST'])
+@login_required
+@admin_required
+def due_diligence_request_fulfilment(request_id):
+    access_request = DocumentAccessRequest.query.get_or_404(request_id)
+    action_type = clean_admin_form_value('action_type')
+    notes = clean_admin_form_value('notes')
+    visibility_level = clean_admin_form_value('visibility_level') or 'redacted_document_candidate'
+
+    if action_type not in DOCUMENT_ACCESS_FULFILMENT_ACTION_TYPES:
+        flash('Please choose a supported due diligence fulfilment action.', 'error')
+        return redirect(url_for('admin.due_diligence_request_detail', request_id=access_request.id))
+    if visibility_level not in DUE_DILIGENCE_VISIBILITY_LABELS:
+        flash('Please choose a supported visibility level.', 'error')
+        return redirect(url_for('admin.due_diligence_request_detail', request_id=access_request.id))
+
+    context = due_diligence_request_context(access_request)
+    if action_type != 'manual_note':
+        if access_request.status != 'approved_for_redacted_access':
+            reason = 'Controlled document access fulfilment requires approved for redacted access status.'
+            block_due_diligence_fulfilment(access_request, action_type, context, reason)
+            db.session.commit()
+            flash(reason, 'error')
+            return redirect(url_for('admin.due_diligence_request_detail', request_id=access_request.id))
+        if not context['approval_allowed']:
+            reason = 'Current consent, entitlement, redaction, or publish-readiness gates no longer allow fulfilment.'
+            block_due_diligence_fulfilment(access_request, action_type, context, reason)
+            db.session.commit()
+            flash(reason, 'error')
+            return redirect(url_for('admin.due_diligence_request_detail', request_id=access_request.id))
+        if action_type == 'redacted_access_recorded':
+            visibility_level = 'redacted_document_candidate'
+        elif action_type == 'restricted_full_document_review_recorded':
+            visibility_level = 'full_document_restricted_candidate'
+
+    create_due_diligence_fulfilment_action(
+        access_request,
+        action_type,
+        notes,
+        visibility_level,
+        context,
+    )
+    db.session.commit()
+    flash('Due diligence fulfilment action recorded. No document file or download link was exposed.', 'success')
+    return redirect(url_for('admin.due_diligence_request_detail', request_id=access_request.id))
 
 
 @admin_bp.route('/documents/<int:document_id>/review')
