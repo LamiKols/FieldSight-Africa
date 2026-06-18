@@ -12,6 +12,8 @@ from models import (
     ActorConsentRecord,
     ActorDocument,
     ApiClient,
+    ApiKey,
+    ApiUsageEvent,
     AuditLog,
     CommercialRequest,
     DocumentAccessLog,
@@ -787,6 +789,42 @@ def commercial_dashboard():
         commercial_requests=commercial_requests,
         recent_gated_audit_events=recent_gated_audit_events,
         recent_gated_document_events=recent_gated_document_events,
+    )
+
+
+@admin_bp.route('/api-dashboard')
+@login_required
+@admin_required
+def api_dashboard():
+    api_clients = ApiClient.query.order_by(ApiClient.created_at.desc()).limit(50).all()
+    api_keys = ApiKey.query.order_by(ApiKey.created_at.desc()).limit(100).all()
+    usage_events = ApiUsageEvent.query.order_by(ApiUsageEvent.occurred_at.desc()).limit(50).all()
+    blocked_document_events = (
+        DocumentAccessLog.query.filter(DocumentAccessLog.access_type.like('api_%blocked%'))
+        .order_by(DocumentAccessLog.accessed_at.desc())
+        .limit(50)
+        .all()
+    )
+    unauthorized_events = (
+        AuditLog.query.filter_by(action='api_document_metadata_unauthorized')
+        .order_by(AuditLog.created_at.desc())
+        .limit(50)
+        .all()
+    )
+    api_enquiries = (
+        CommercialRequest.query.filter_by(request_type='api_access')
+        .order_by(CommercialRequest.created_at.desc())
+        .limit(50)
+        .all()
+    )
+    return render_template(
+        'admin/api_dashboard.html',
+        api_clients=api_clients,
+        api_keys=api_keys,
+        usage_events=usage_events,
+        blocked_document_events=blocked_document_events,
+        unauthorized_events=unauthorized_events,
+        api_enquiries=api_enquiries,
     )
 
 

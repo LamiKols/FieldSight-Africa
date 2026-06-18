@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+
+{% block title %}API Access - FieldSight Africa{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6 mb-8">
+        <div>
+            <h1 class="text-3xl font-bold text-gray-900">FieldSight API</h1>
+            <p class="text-gray-600 mt-2 max-w-3xl">Developer access for governed document metadata. The API uses existing API clients, hashed keys, commercial approval, and Phase 3.4 metadata gates.</p>
+        </div>
+        <div class="flex flex-wrap gap-3">
+            <a href="{{ url_for('subscriber.api_docs') }}" class="px-5 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50">Read Docs</a>
+            <a href="{{ url_for('subscriber.api_request_access') }}" class="px-5 py-2 rounded-lg bg-primary text-white hover:bg-secondary">Request API Access</a>
+        </div>
+    </div>
+
+    <div class="grid md:grid-cols-4 gap-6 mb-8">
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <p class="text-sm text-gray-500">API Clients</p>
+            <p class="text-3xl font-bold text-gray-900 mt-2">{{ api_clients|length }}</p>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <p class="text-sm text-gray-500">Active Clients</p>
+            <p class="text-3xl font-bold text-gray-900 mt-2">{{ api_clients|selectattr('status', 'equalto', 'active')|list|length }}</p>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <p class="text-sm text-gray-500">Recent API Calls</p>
+            <p class="text-3xl font-bold text-gray-900 mt-2">{{ recent_usage|length }}</p>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <p class="text-sm text-gray-500">Access Type</p>
+            <p class="text-2xl font-bold text-gray-900 mt-2">{{ entitlements.access_type|replace('_', ' ')|title }}</p>
+        </div>
+    </div>
+
+    <section class="bg-white rounded-xl shadow-sm border p-6 mb-8">
+        <div class="flex flex-col md:flex-row md:items-start md:justify-between gap-4 mb-5">
+            <div>
+                <h2 class="text-xl font-semibold text-gray-900">Owned API Clients</h2>
+                <p class="text-sm text-gray-600 mt-1">Key prefixes identify keys. Raw secrets are only available at creation time and are not displayed here.</p>
+            </div>
+            <a href="{{ url_for('subscriber.api_request_access') }}" class="text-primary hover:underline text-sm">Request client or scope</a>
+        </div>
+
+        <div class="overflow-x-auto">
+            <table class="w-full">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Client</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Scopes</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Key Prefixes</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Last Used</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y">
+                    {% for client in api_clients %}
+                    <tr>
+                        <td class="px-5 py-4 text-sm text-gray-900">{{ client.name }}</td>
+                        <td class="px-5 py-4 text-sm text-gray-700">{{ client.status|title }}</td>
+                        <td class="px-5 py-4 text-sm text-gray-700">{{ client.scopes|join(', ') if client.scopes else 'No scopes' }}</td>
+                        <td class="px-5 py-4 text-sm text-gray-700">
+                            {% for key in client.api_keys %}
+                            <div>{{ key.name }}: <span class="font-mono">{{ key.key_prefix }}</span> ({{ key.status|title }})</div>
+                            {% else %}
+                            No keys
+                            {% endfor %}
+                        </td>
+                        <td class="px-5 py-4 text-sm text-gray-500">
+                            {% set used_values = client.api_keys|selectattr('last_used_at')|map(attribute='last_used_at')|list %}
+                            {% if used_values %}{{ used_values|max }}{% else %}Never{% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="5" class="px-6 py-10 text-center text-gray-500">No API clients are attached to your account yet.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <div class="grid lg:grid-cols-2 gap-6 mb-8">
+        <section class="bg-white rounded-xl shadow-sm border p-6">
+            <h2 class="text-xl font-semibold text-gray-900 mb-4">Safe Sample Request</h2>
+            <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-sm"><code>curl -H "Authorization: Bearer &lt;your_api_secret&gt;" \
+  "{{ request.url_root.rstrip('/') }}/api/v1/document-metadata?region=SW&amp;crop=Ginger"</code></pre>
+            <p class="text-sm text-gray-600 mt-4">Use the raw secret only in the request header. This dashboard never displays it after creation.</p>
+        </section>
+
+        <section class="bg-white rounded-xl shadow-sm border p-6">
+            <h2 class="text-xl font-semibold text-gray-900 mb-4">Returned Metadata Fields</h2>
+            <div class="flex flex-wrap gap-2">
+                {% for field in safe_fields %}
+                <span class="px-3 py-1 rounded-full bg-gray-100 text-gray-700 text-sm">{{ field }}</span>
+                {% endfor %}
+            </div>
+        </section>
+    </div>
+
+    <section class="bg-white rounded-xl shadow-sm border overflow-hidden mb-8">
+        <div class="px-6 py-4 border-b">
+            <h2 class="text-xl font-semibold text-gray-900">Recent Usage</h2>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Client</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Endpoint</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Rows</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Time</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y">
+                    {% for event in recent_usage %}
+                    <tr>
+                        <td class="px-5 py-4 text-sm text-gray-900">{{ event.api_client.name if event.api_client else 'API client' }}</td>
+                        <td class="px-5 py-4 text-sm text-gray-700">{{ event.endpoint }}</td>
+                        <td class="px-5 py-4 text-sm text-gray-700">{{ event.status_code }}</td>
+                        <td class="px-5 py-4 text-sm text-gray-700">{{ event.row_count or 0 }}</td>
+                        <td class="px-5 py-4 text-sm text-gray-500">{{ event.occurred_at.strftime('%Y-%m-%d %H:%M') if event.occurred_at else '' }}</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="5" class="px-6 py-10 text-center text-gray-500">No recent API usage.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="bg-white rounded-xl shadow-sm border p-6">
+        <h2 class="text-xl font-semibold text-gray-900 mb-4">API Access Requests</h2>
+        <div class="space-y-3">
+            {% for api_request in api_requests %}
+            <div class="rounded-lg border border-gray-200 p-4">
+                <div class="flex items-center justify-between gap-4">
+                    <span class="font-medium text-gray-900">{{ api_request.requested_product or 'API Metadata Access' }}</span>
+                    <span class="text-sm text-gray-600">{{ api_request.status|replace('_', ' ')|title }}</span>
+                </div>
+                <p class="text-sm text-gray-600 mt-1">{{ api_request.organization_name or current_user.name }}</p>
+            </div>
+            {% else %}
+            <p class="text-sm text-gray-600">No API access enquiries have been submitted yet.</p>
+            {% endfor %}
+        </div>
+    </section>
+</div>
+{% endblock %}

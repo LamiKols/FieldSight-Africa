@@ -1,0 +1,189 @@
+{% extends "base.html" %}
+
+{% block title %}API Dashboard - FieldSight Africa{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="mb-8">
+        <a href="{{ url_for('admin.dashboard') }}" class="text-primary hover:underline text-sm">&larr; Back to Admin Dashboard</a>
+        <h1 class="text-3xl font-bold text-gray-900 mt-3">API Dashboard</h1>
+        <p class="text-gray-600 mt-1">API clients, key prefixes, usage, blocked metadata attempts, and API access enquiries.</p>
+    </div>
+
+    <div class="grid md:grid-cols-5 gap-6 mb-8">
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <p class="text-sm text-gray-500">API Clients</p>
+            <p class="text-3xl font-bold text-gray-900 mt-2">{{ api_clients|length }}</p>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <p class="text-sm text-gray-500">API Keys</p>
+            <p class="text-3xl font-bold text-gray-900 mt-2">{{ api_keys|length }}</p>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <p class="text-sm text-gray-500">Usage Events</p>
+            <p class="text-3xl font-bold text-gray-900 mt-2">{{ usage_events|length }}</p>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <p class="text-sm text-gray-500">Blocked Metadata</p>
+            <p class="text-3xl font-bold text-gray-900 mt-2">{{ blocked_document_events|length + unauthorized_events|length }}</p>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <p class="text-sm text-gray-500">API Enquiries</p>
+            <p class="text-3xl font-bold text-gray-900 mt-2">{{ api_enquiries|length }}</p>
+        </div>
+    </div>
+
+    <section class="bg-white rounded-xl shadow-sm border overflow-hidden mb-8">
+        <div class="px-6 py-4 border-b">
+            <h2 class="text-xl font-semibold text-gray-900">API Clients</h2>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Client</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Owner</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Scopes</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Created</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y">
+                    {% for client in api_clients %}
+                    <tr>
+                        <td class="px-5 py-4 text-sm text-gray-900">{{ client.name }}</td>
+                        <td class="px-5 py-4 text-sm text-gray-700">{{ client.owner_user.email if client.owner_user else 'No owner' }}</td>
+                        <td class="px-5 py-4 text-sm text-gray-700">{{ client.status|title }}</td>
+                        <td class="px-5 py-4 text-sm text-gray-700">{{ client.scopes|join(', ') if client.scopes else 'No scopes' }}</td>
+                        <td class="px-5 py-4 text-sm text-gray-500">{{ client.created_at.strftime('%Y-%m-%d') if client.created_at else '' }}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="5" class="px-6 py-10 text-center text-gray-500">No API clients found.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="bg-white rounded-xl shadow-sm border overflow-hidden mb-8">
+        <div class="px-6 py-4 border-b">
+            <h2 class="text-xl font-semibold text-gray-900">Key Prefixes</h2>
+            <p class="text-sm text-gray-600 mt-1">Only prefixes and operational metadata are shown. Raw secrets and hashes are not exposed.</p>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Prefix</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Key</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Client</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Scopes</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Last Used</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y">
+                    {% for key in api_keys %}
+                    <tr>
+                        <td class="px-5 py-4 text-sm font-mono text-gray-900">{{ key.key_prefix }}</td>
+                        <td class="px-5 py-4 text-sm text-gray-700">{{ key.name }}</td>
+                        <td class="px-5 py-4 text-sm text-gray-700">{{ key.api_client.name if key.api_client else 'Unknown client' }}</td>
+                        <td class="px-5 py-4 text-sm text-gray-700">{{ key.status|title }}</td>
+                        <td class="px-5 py-4 text-sm text-gray-700">{{ key.scopes|join(', ') if key.scopes else 'No scopes' }}</td>
+                        <td class="px-5 py-4 text-sm text-gray-500">{{ key.last_used_at.strftime('%Y-%m-%d %H:%M') if key.last_used_at else 'Never' }}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="6" class="px-6 py-10 text-center text-gray-500">No API keys found.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <div class="grid lg:grid-cols-2 gap-6 mb-8">
+        <section class="bg-white rounded-xl shadow-sm border overflow-hidden">
+            <div class="px-6 py-4 border-b">
+                <h2 class="text-xl font-semibold text-gray-900">Recent Usage</h2>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Client</th>
+                            <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Endpoint</th>
+                            <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                            <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Rows</th>
+                            <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Time</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y">
+                        {% for event in usage_events %}
+                        <tr>
+                            <td class="px-5 py-4 text-sm text-gray-900">{{ event.api_client.name if event.api_client else 'API client' }}</td>
+                            <td class="px-5 py-4 text-sm text-gray-700">{{ event.endpoint }}</td>
+                            <td class="px-5 py-4 text-sm text-gray-700">{{ event.status_code }}</td>
+                            <td class="px-5 py-4 text-sm text-gray-700">{{ event.row_count or 0 }}</td>
+                            <td class="px-5 py-4 text-sm text-gray-500">{{ event.occurred_at.strftime('%Y-%m-%d %H:%M') if event.occurred_at else '' }}</td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="5" class="px-6 py-10 text-center text-gray-500">No usage events found.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="bg-white rounded-xl shadow-sm border overflow-hidden">
+            <div class="px-6 py-4 border-b">
+                <h2 class="text-xl font-semibold text-gray-900">Blocked API Metadata Attempts</h2>
+            </div>
+            <div class="divide-y">
+                {% for event in blocked_document_events %}
+                <div class="px-6 py-4 text-sm">
+                    <p class="font-medium text-gray-900">{{ event.access_type }}</p>
+                    <p class="text-gray-600">{{ event.api_client.name if event.api_client else 'API client' }} - document #{{ event.actor_document_id }} - {{ event.accessed_at.strftime('%Y-%m-%d %H:%M') if event.accessed_at else '' }}</p>
+                </div>
+                {% else %}
+                <p class="px-6 py-6 text-sm text-gray-500">No blocked document-level API attempts found.</p>
+                {% endfor %}
+                {% for event in unauthorized_events %}
+                <div class="px-6 py-4 text-sm bg-gray-50">
+                    <p class="font-medium text-gray-900">{{ event.action }}</p>
+                    <p class="text-gray-600">{{ event.created_at.strftime('%Y-%m-%d %H:%M') if event.created_at else '' }} - unauthenticated or unauthorized key attempt</p>
+                </div>
+                {% endfor %}
+            </div>
+        </section>
+    </div>
+
+    <section class="bg-white rounded-xl shadow-sm border overflow-hidden">
+        <div class="px-6 py-4 border-b">
+            <h2 class="text-xl font-semibold text-gray-900">API Access Enquiries</h2>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Organization</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Product</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Created</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y">
+                    {% for enquiry in api_enquiries %}
+                    <tr>
+                        <td class="px-5 py-4 text-sm text-gray-900">{{ enquiry.organization_name or 'Not supplied' }}</td>
+                        <td class="px-5 py-4 text-sm text-gray-700">{{ enquiry.requested_product or 'API Metadata Access' }}</td>
+                        <td class="px-5 py-4 text-sm text-gray-700">{{ enquiry.status|replace('_', ' ')|title }}</td>
+                        <td class="px-5 py-4 text-sm text-gray-500">{{ enquiry.created_at.strftime('%Y-%m-%d %H:%M') if enquiry.created_at else '' }}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="4" class="px-6 py-10 text-center text-gray-500">No API access enquiries found.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+</div>
+{% endblock %}

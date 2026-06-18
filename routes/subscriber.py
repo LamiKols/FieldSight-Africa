@@ -19,6 +19,7 @@ from models import (
     DOCUMENT_ACCESS_REQUEST_TYPES,
     ActorDocument,
     ApiClient,
+    ApiUsageEvent,
     AuditLog,
     CommercialRequest,
     Crop,
@@ -79,6 +80,58 @@ PRODUCT_CATALOGUE = [
         'description': 'Commercial annual access with monthly updates and custom scope.',
     },
 ]
+
+API_SAFE_METADATA_FIELDS = [
+    'document_id',
+    'actor_public_id',
+    'actor_type',
+    'document_type',
+    'document_type_code',
+    'document_category',
+    'reference_number',
+    'issuing_body',
+    'issued_at',
+    'expires_at',
+    'crop',
+    'commodity',
+    'region_code',
+    'region_name',
+    'verification_status',
+    'review_status',
+    'redaction_status',
+    'publish_target',
+    'publish_status',
+    'metadata_only',
+]
+
+API_SAMPLE_RESPONSE = {
+    'data': [
+        {
+            'document_id': 42,
+            'actor_public_id': 'actor_8f3a21c9',
+            'actor_type': 'exporter',
+            'document_type': 'Certificate of Origin',
+            'document_type_code': 'certificate_of_origin',
+            'document_category': 'export_compliance_document',
+            'reference_number': 'COO-2026-001',
+            'issuing_body': 'Nigerian Export Promotion Council',
+            'issued_at': '2026-05-01',
+            'expires_at': '2027-05-01',
+            'crop': 'Ginger',
+            'commodity': 'Dried Ginger',
+            'region_code': 'SW',
+            'region_name': 'South West',
+            'verification_status': 'verified',
+            'review_status': 'approved',
+            'redaction_status': 'completed',
+            'publish_target': 'api_metadata',
+            'publish_status': 'ready',
+            'metadata_only': True,
+        }
+    ],
+    'count': 1,
+    'metadata_only': True,
+}
 
 
 def data_access_required(f):
@@ -189,6 +242,32 @@ def api_access_summary(user):
         'clients': clients,
         'active_clients': active_clients,
         'metadata_enabled': metadata_enabled,
+    }
+
+
+def api_dashboard_context(user):
+    clients = ApiClient.query.filter_by(owner_user_id=user.id).order_by(ApiClient.created_at.desc()).all()
+    client_ids = [client.id for client in clients]
+    recent_usage = []
+    if client_ids:
+        recent_usage = (
+            ApiUsageEvent.query.filter(ApiUsageEvent.api_client_id.in_(client_ids))
+            .order_by(ApiUsageEvent.occurred_at.desc())
+            .limit(20)
+            .all()
+        )
+    api_requests = (
+        CommercialRequest.query.filter_by(user_id=user.id, request_type='api_access')
+        .order_by(CommercialRequest.created_at.desc())
+        .limit(10)
+        .all()
+    )
+    return {
+        'api_clients': clients,
+        'recent_usage': recent_usage,
+        'api_requests': api_requests,
+        'safe_fields': API_SAFE_METADATA_FIELDS,
+        'sample_response': API_SAMPLE_RESPONSE,
     }
 
 
@@ -363,6 +442,63 @@ def my_access():
         request_labels=COMMERCIAL_REQUEST_LABELS,
         **scope_context,
     )
+
+
+@subscriber_bp.route('/subscriber/api')
+@login_required
+def api_product():
+    return render_template(
+        'subscriber/api.html',
+        **api_dashboard_context(current_user),
+        entitlements=get_user_entitlements(current_user),
+    )
+
+
+@subscriber_bp.route('/subscriber/api/docs')
+@login_required
+def api_docs():
+    return render_template(
+        'subscriber/api_docs.html',
+        safe_fields=API_SAFE_METADATA_FIELDS,
+        sample_response=API_SAMPLE_RESPONSE,
+    )
+
+
+@subscriber_bp.route('/subscriber/api/request-access', methods=['GET', 'POST'])
+@login_required
+def api_request_access():
+    if request.method == 'POST':
+        organization_name = clean_subscriber_form_value('organization_name')
+        message = clean_subscriber_form_value('message')
+        requested_product = clean_subscriber_form_value('requested_product') or 'API Metadata Access'
+        if not organization_name:
+            flash('Organization name is required.', 'error')
+            return render_template('subscriber/api_request_access.html', safe_fields=API_SAFE_METADATA_FIELDS)
+        if not message:
+            flash('Please describe your API use case.', 'error')
+            return render_template('subscriber/api_request_access.html', safe_fields=API_SAFE_METADATA_FIELDS)
+
+        commercial_request = create_commercial_request_from_form(
+            request_type='api_access',
+            context_json={
+                'source_route': 'subscriber.api_request_access',
+                'requested_api_endpoint': '/api/v1/document-metadata',
+                'requested_scopes': ['document_metadata:read'],
+                'safe_metadata_fields': API_SAFE_METADATA_FIELDS,
+                'commercial_packaging_phase': '4.1',
+                'auto_client_created': False,
+                'auto_access_granted': False,
+            },
+        )
+        if not commercial_request.requested_product:
+            commercial_request.requested_product = requested_product
+        if not commercial_request.dataset_code:
+            commercial_request.dataset_code = 'document_metadata'
+        db.session.commit()
+        flash('API access request captured for commercial review. No API client or key was created automatically.', 'success')
+        return redirect(url_for('subscriber.api_product'))
+
+    return render_template('subscriber/api_request_access.html', safe_fields=API_SAFE_METADATA_FIELDS)
 
 
 @subscriber_bp.route('/datasets')
