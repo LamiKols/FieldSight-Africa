@@ -11,7 +11,9 @@ from functools import wraps
 from models import (
     ActorConsentRecord,
     ActorDocument,
+    ApiClient,
     AuditLog,
+    CommercialRequest,
     DocumentAccessLog,
     DocumentAccessRequest,
     DocumentExtractionRun,
@@ -32,6 +34,7 @@ from models import (
     DatasetRecord,
     ExportLog,
     License,
+    LicensedPack,
     LiveIntelligenceAccess,
     ReferenceOption,
     REFERENCE_OPTION_CATEGORIES,
@@ -723,6 +726,7 @@ def dashboard():
         ActorDocument.review_status.in_(['pending', 'needs_correction', 'redaction_required']),
     ).count()
     pending_document_access_requests = DocumentAccessRequest.query.filter_by(status='pending').count()
+    pending_commercial_requests = CommercialRequest.query.filter_by(status='pending').count()
     
     recent_exports = ExportLog.query.order_by(ExportLog.exported_at.desc()).limit(10).all()
     
@@ -733,7 +737,57 @@ def dashboard():
                            total_exports=total_exports,
                            pending_document_reviews=pending_document_reviews,
                            pending_document_access_requests=pending_document_access_requests,
+                           pending_commercial_requests=pending_commercial_requests,
                            recent_exports=recent_exports)
+
+
+@admin_bp.route('/commercial-dashboard')
+@login_required
+@admin_required
+def commercial_dashboard():
+    active_packs = LicensedPack.query.filter_by(active=True).order_by(LicensedPack.price_usd).all()
+    active_subscriptions = Subscription.query.filter_by(status='active').order_by(Subscription.created_at.desc()).limit(20).all()
+    recent_licenses = License.query.order_by(License.created_at.desc()).limit(20).all()
+    live_accesses = LiveIntelligenceAccess.query.order_by(LiveIntelligenceAccess.created_at.desc()).limit(20).all()
+    api_clients = ApiClient.query.order_by(ApiClient.created_at.desc()).limit(20).all()
+    access_requests = DocumentAccessRequest.query.order_by(DocumentAccessRequest.created_at.desc()).limit(20).all()
+    commercial_requests = CommercialRequest.query.order_by(CommercialRequest.created_at.desc()).limit(30).all()
+    recent_gated_audit_events = (
+        AuditLog.query.filter(
+            AuditLog.action.in_([
+                'commercial_live_intelligence_request_created',
+                'commercial_api_access_request_created',
+                'commercial_upgrade_request_created',
+                'subscriber_document_access_request_blocked',
+                'subscriber_document_access_requested',
+                'api_document_metadata_unauthorized',
+            ])
+        )
+        .order_by(AuditLog.created_at.desc())
+        .limit(20)
+        .all()
+    )
+    recent_gated_document_events = (
+        DocumentAccessLog.query.filter(
+            DocumentAccessLog.access_type.like('%blocked%')
+        )
+        .order_by(DocumentAccessLog.accessed_at.desc())
+        .limit(20)
+        .all()
+    )
+
+    return render_template(
+        'admin/commercial_dashboard.html',
+        active_packs=active_packs,
+        active_subscriptions=active_subscriptions,
+        recent_licenses=recent_licenses,
+        live_accesses=live_accesses,
+        api_clients=api_clients,
+        access_requests=access_requests,
+        commercial_requests=commercial_requests,
+        recent_gated_audit_events=recent_gated_audit_events,
+        recent_gated_document_events=recent_gated_document_events,
+    )
 
 
 @admin_bp.route('/upload', methods=['GET', 'POST'])

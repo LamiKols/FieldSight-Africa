@@ -1,0 +1,258 @@
+{% extends "base.html" %}
+
+{% block title %}My Access - FieldSight Africa{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-8">
+        <div>
+            <h1 class="text-3xl font-bold text-gray-900">My Access</h1>
+            <p class="text-gray-600 mt-1">Your current subscriptions, licences, API scope, and governed document metadata access.</p>
+        </div>
+        <div class="flex flex-wrap gap-3">
+            <a href="{{ url_for('subscriber.products') }}" class="px-5 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50">View Products</a>
+            <a href="{{ url_for('subscriber.commercial_request_new', request_type='upgrade') }}" class="px-5 py-2 rounded-lg bg-primary text-white hover:bg-secondary">Request Upgrade</a>
+        </div>
+    </div>
+
+    <div class="grid md:grid-cols-4 gap-6 mb-8">
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <p class="text-sm text-gray-500">Current Access</p>
+            <p class="text-2xl font-bold text-gray-900 mt-2">{{ entitlements.access_type|replace('_', ' ')|title }}</p>
+            {% if plan %}
+            <p class="text-sm text-gray-600 mt-1">{{ plan.name }}</p>
+            {% endif %}
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <p class="text-sm text-gray-500">Licensed Packs</p>
+            <p class="text-2xl font-bold text-gray-900 mt-2">{{ licenses|length }}</p>
+            <p class="text-sm text-gray-600 mt-1">Active and historic purchases</p>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <p class="text-sm text-gray-500">API Clients</p>
+            <p class="text-2xl font-bold text-gray-900 mt-2">{{ api_summary.active_clients|length }}</p>
+            <p class="text-sm text-gray-600 mt-1">{{ api_summary.metadata_enabled|length }} metadata enabled</p>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <p class="text-sm text-gray-500">Document Metadata</p>
+            <p class="text-2xl font-bold text-gray-900 mt-2">{{ document_summary.visible_count }}</p>
+            <p class="text-sm text-gray-600 mt-1">{{ document_summary.blocked_count }} blocked by gates</p>
+        </div>
+    </div>
+
+    <div class="grid lg:grid-cols-2 gap-6 mb-8">
+        <section class="bg-white rounded-xl shadow-sm border p-6">
+            <div class="flex items-start justify-between gap-4 mb-5">
+                <div>
+                    <h2 class="text-xl font-semibold text-gray-900">Subscriptions</h2>
+                    <p class="text-sm text-gray-600">Recurring access remains governed by the existing subscription record.</p>
+                </div>
+                {% if not subscription %}
+                <a href="{{ url_for('subscriber.commercial_request_new', request_type='upgrade', product='Subscription Upgrade') }}" class="text-sm text-primary hover:underline">Enquire</a>
+                {% endif %}
+            </div>
+            {% if subscription %}
+            <dl class="grid sm:grid-cols-2 gap-4 text-sm">
+                <div>
+                    <dt class="text-gray-500">Plan</dt>
+                    <dd class="font-medium text-gray-900">{{ plan.name if plan else subscription.plan_code }}</dd>
+                </div>
+                <div>
+                    <dt class="text-gray-500">Status</dt>
+                    <dd class="font-medium text-gray-900">{{ subscription.status|title }}</dd>
+                </div>
+                <div>
+                    <dt class="text-gray-500">Regions</dt>
+                    <dd class="font-medium text-gray-900">{{ subscription.regions_selected|join(', ') if subscription.regions_selected else 'Not scoped' }}</dd>
+                </div>
+                <div>
+                    <dt class="text-gray-500">Crops</dt>
+                    <dd class="font-medium text-gray-900">{{ subscription.crops_selected|join(', ') if subscription.crops_selected else 'Not scoped' }}</dd>
+                </div>
+            </dl>
+            {% else %}
+            <p class="text-sm text-gray-600">No active subscription is attached to this account.</p>
+            {% endif %}
+        </section>
+
+        <section class="bg-white rounded-xl shadow-sm border p-6">
+            <div class="flex items-start justify-between gap-4 mb-5">
+                <div>
+                    <h2 class="text-xl font-semibold text-gray-900">Live Intelligence</h2>
+                    <p class="text-sm text-gray-600">Annual live access scope, when granted by the admin team.</p>
+                </div>
+                <a href="{{ url_for('subscriber.commercial_request_new', request_type='live_intelligence', product='Live Market Intelligence') }}" class="text-sm text-primary hover:underline">Request</a>
+            </div>
+            <div class="space-y-4">
+                {% for access in live_accesses %}
+                <div class="rounded-lg border border-gray-200 p-4">
+                    <div class="flex items-center justify-between">
+                        <span class="font-medium text-gray-900">{{ access.start_date.strftime('%Y-%m-%d') }} to {{ access.end_date.strftime('%Y-%m-%d') }}</span>
+                        <span class="text-sm text-emerald-700">Active</span>
+                    </div>
+                    <p class="text-sm text-gray-600 mt-2">Regions: {{ access.regions_selected|join(', ') if access.regions_selected else 'All available regions' }}</p>
+                    <p class="text-sm text-gray-600">Crops: {{ access.crops_selected|join(', ') if access.crops_selected else 'All crops' }}</p>
+                </div>
+                {% else %}
+                <p class="text-sm text-gray-600">No active Live Intelligence access is attached to this account.</p>
+                {% endfor %}
+            </div>
+        </section>
+    </div>
+
+    <div class="grid lg:grid-cols-2 gap-6 mb-8">
+        <section class="bg-white rounded-xl shadow-sm border p-6">
+            <div class="flex items-start justify-between gap-4 mb-5">
+                <div>
+                    <h2 class="text-xl font-semibold text-gray-900">Licensed Packs</h2>
+                    <p class="text-sm text-gray-600">Point-in-time data packs you own or have purchased.</p>
+                </div>
+                <a href="{{ url_for('subscriber.products') }}" class="text-sm text-primary hover:underline">Catalogue</a>
+            </div>
+            <div class="space-y-4">
+                {% for license in licenses %}
+                <div class="rounded-lg border border-gray-200 p-4">
+                    <div class="flex items-center justify-between gap-3">
+                        <span class="font-medium text-gray-900">{{ license.licensed_pack.name if license.licensed_pack else 'Licensed Pack' }}</span>
+                        <span class="text-sm text-gray-600">{{ license.status|title }}</span>
+                    </div>
+                    <p class="text-sm text-gray-600 mt-2">Snapshot: {{ license.snapshot_month }}</p>
+                    <p class="text-sm text-gray-600">Regions: {{ license.regions_selected|join(', ') if license.regions_selected else 'Not scoped' }}</p>
+                    <p class="text-sm text-gray-600">Crops: {{ license.crops_selected|join(', ') if license.crops_selected else 'All crops' }}</p>
+                </div>
+                {% else %}
+                <p class="text-sm text-gray-600">No licensed data packs are attached to this account.</p>
+                {% endfor %}
+            </div>
+        </section>
+
+        <section class="bg-white rounded-xl shadow-sm border p-6">
+            <div class="flex items-start justify-between gap-4 mb-5">
+                <div>
+                    <h2 class="text-xl font-semibold text-gray-900">API And Document Metadata</h2>
+                    <p class="text-sm text-gray-600">API clients and governed metadata access remain read-only unless separately approved.</p>
+                </div>
+                <a href="{{ url_for('subscriber.commercial_request_new', request_type='api_access', product='API Metadata') }}" class="text-sm text-primary hover:underline">Request API</a>
+            </div>
+            <div class="space-y-4">
+                {% for client in api_summary.clients %}
+                <div class="rounded-lg border border-gray-200 p-4">
+                    <div class="flex items-center justify-between gap-3">
+                        <span class="font-medium text-gray-900">{{ client.name }}</span>
+                        <span class="text-sm text-gray-600">{{ client.status|title }}</span>
+                    </div>
+                    <p class="text-sm text-gray-600 mt-2">Scopes: {{ client.scopes|join(', ') if client.scopes else 'No scopes' }}</p>
+                </div>
+                {% else %}
+                <p class="text-sm text-gray-600">No API clients are attached to this account.</p>
+                {% endfor %}
+                <div class="rounded-lg bg-blue-50 border border-blue-200 p-4 text-sm text-blue-800">
+                    {{ document_summary.visible_count }} verified document metadata record{% if document_summary.visible_count != 1 %}s{% endif %} are visible under your current entitlement. Files, private paths, filenames, and actor contact data are not exposed.
+                    <div class="mt-3 flex flex-wrap gap-3">
+                        <a href="{{ url_for('subscriber.document_metadata') }}" class="text-primary hover:underline">View Metadata</a>
+                        <a href="{{ url_for('subscriber.new_document_access_request') }}" class="text-primary hover:underline">Request Restricted Access</a>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <section class="bg-white rounded-xl shadow-sm border p-6 mb-8">
+        <div class="flex items-start justify-between gap-4 mb-5">
+            <div>
+                <h2 class="text-xl font-semibold text-gray-900">Gated Access</h2>
+                <p class="text-sm text-gray-600">Unavailable datasets, regions, crops, API access, and restricted document access can be requested without changing your entitlement automatically.</p>
+            </div>
+            <a href="{{ url_for('subscriber.commercial_request_new', request_type='upgrade') }}" class="text-sm text-primary hover:underline">Start Request</a>
+        </div>
+
+        <div class="grid lg:grid-cols-3 gap-6">
+            <div>
+                <h3 class="font-medium text-gray-900 mb-3">Datasets</h3>
+                <div class="space-y-2">
+                    {% for item in datasets %}
+                    <div class="flex items-center justify-between gap-3 rounded-lg border border-gray-200 px-3 py-2">
+                        <span class="text-sm text-gray-700">{{ item.dataset.name }}</span>
+                        {% if item.available %}
+                        <span class="text-xs text-emerald-700">Available</span>
+                        {% else %}
+                        <a href="{{ url_for('subscriber.commercial_request_new', request_type='upgrade', dataset_code=item.dataset.code, product='Dataset Upgrade') }}" class="text-xs text-primary hover:underline">Request</a>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <div>
+                <h3 class="font-medium text-gray-900 mb-3">Regions</h3>
+                <div class="space-y-2">
+                    {% for item in regions %}
+                    <div class="flex items-center justify-between gap-3 rounded-lg border border-gray-200 px-3 py-2">
+                        <span class="text-sm text-gray-700">{{ item.name }}</span>
+                        {% if item.available %}
+                        <span class="text-xs text-emerald-700">Available</span>
+                        {% else %}
+                        <a href="{{ url_for('subscriber.commercial_request_new', request_type='upgrade', region_code=item.code, product='Region Upgrade') }}" class="text-xs text-primary hover:underline">Request</a>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <div>
+                <h3 class="font-medium text-gray-900 mb-3">Crops</h3>
+                <div class="space-y-2 max-h-80 overflow-y-auto pr-1">
+                    {% for item in crops %}
+                    <div class="flex items-center justify-between gap-3 rounded-lg border border-gray-200 px-3 py-2">
+                        <span class="text-sm text-gray-700">{{ item.name }}</span>
+                        {% if item.available %}
+                        <span class="text-xs text-emerald-700">Available</span>
+                        {% else %}
+                        <a href="{{ url_for('subscriber.commercial_request_new', request_type='upgrade', crop_name=item.name, product='Crop Upgrade') }}" class="text-xs text-primary hover:underline">Request</a>
+                        {% endif %}
+                    </div>
+                    {% else %}
+                    <p class="text-sm text-gray-500">No crop reference data is available.</p>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <div class="grid lg:grid-cols-2 gap-6">
+        <section class="bg-white rounded-xl shadow-sm border p-6">
+            <h2 class="text-xl font-semibold text-gray-900 mb-5">Recent Commercial Requests</h2>
+            <div class="space-y-3">
+                {% for commercial_request in commercial_requests %}
+                <div class="rounded-lg border border-gray-200 p-4">
+                    <div class="flex items-center justify-between gap-3">
+                        <span class="font-medium text-gray-900">{{ request_labels.get(commercial_request.request_type, commercial_request.request_type)|title }}</span>
+                        <span class="text-sm text-gray-600">{{ commercial_request.status|replace('_', ' ')|title }}</span>
+                    </div>
+                    <p class="text-sm text-gray-600 mt-1">{{ commercial_request.requested_product or commercial_request.dataset_code or commercial_request.region_code or commercial_request.crop_name or 'General request' }}</p>
+                </div>
+                {% else %}
+                <p class="text-sm text-gray-600">No commercial requests have been submitted yet.</p>
+                {% endfor %}
+            </div>
+        </section>
+
+        <section class="bg-white rounded-xl shadow-sm border p-6">
+            <h2 class="text-xl font-semibold text-gray-900 mb-5">Restricted Document Requests</h2>
+            <div class="space-y-3">
+                {% for access_request in access_requests %}
+                <div class="rounded-lg border border-gray-200 p-4">
+                    <div class="flex items-center justify-between gap-3">
+                        <span class="font-medium text-gray-900">{{ access_request.request_type|replace('_', ' ')|title }}</span>
+                        <span class="text-sm text-gray-600">{{ access_request.status|replace('_', ' ')|title }}</span>
+                    </div>
+                    <p class="text-sm text-gray-600 mt-1">{{ access_request.organization_name or current_user.name }}</p>
+                </div>
+                {% else %}
+                <p class="text-sm text-gray-600">No restricted document access requests have been submitted yet.</p>
+                {% endfor %}
+            </div>
+        </section>
+    </div>
+</div>
+{% endblock %}

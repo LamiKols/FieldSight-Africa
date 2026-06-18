@@ -9,7 +9,7 @@
         <p class="text-gray-600 mt-1">Manage datasets, users, and monitor platform activity</p>
     </div>
 
-    <div class="grid md:grid-cols-6 gap-6 mb-8">
+    <div class="grid md:grid-cols-7 gap-6 mb-8">
         <div class="bg-white rounded-xl shadow-sm border p-6">
             <h3 class="text-sm font-medium text-gray-500 uppercase tracking-wide">Total Users</h3>
             <p class="text-3xl font-bold text-gray-900 mt-2">{{ total_users }}</p>
@@ -38,6 +38,11 @@
         <div class="bg-white rounded-xl shadow-sm border p-6">
             <h3 class="text-sm font-medium text-gray-500 uppercase tracking-wide">Access Requests</h3>
             <p class="text-3xl font-bold text-amber-600 mt-2">{{ pending_document_access_requests }}</p>
+        </div>
+
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <h3 class="text-sm font-medium text-gray-500 uppercase tracking-wide">Commercial</h3>
+            <p class="text-3xl font-bold text-amber-600 mt-2">{{ pending_commercial_requests }}</p>
         </div>
     </div>
 
@@ -122,6 +127,18 @@
                 <div>
                     <h3 class="font-semibold text-lg text-gray-900">Access Requests</h3>
                     <p class="text-gray-600 text-sm">Review restricted document requests</p>
+                </div>
+            </div>
+        </a>
+
+        <a href="{{ url_for('admin.commercial_dashboard') }}" class="bg-white rounded-xl border p-6 hover:border-primary transition">
+            <div class="flex items-center">
+                <svg class="w-8 h-8 mr-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7h18M6 7v10a2 2 0 002 2h8a2 2 0 002-2V7M9 11h6"/>
+                </svg>
+                <div>
+                    <h3 class="font-semibold text-lg text-gray-900">Commercial Dashboard</h3>
+                    <p class="text-gray-600 text-sm">Review packaging demand</p>
                 </div>
             </div>
         </a>

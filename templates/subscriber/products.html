@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+
+{% block title %}Products - FieldSight Africa{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+    <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6 mb-10">
+        <div>
+            <h1 class="text-4xl font-bold text-gray-900">Commercial Products</h1>
+            <p class="text-xl text-gray-600 mt-3 max-w-3xl">Choose a packaged snapshot or request live commercial intelligence. Product pages explain access; entitlements are still granted only through the existing payment, licence, admin, and governance workflows.</p>
+        </div>
+        {% if current_user.is_authenticated %}
+        <a href="{{ url_for('subscriber.my_access') }}" class="inline-flex justify-center px-5 py-3 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50">View My Access</a>
+        {% else %}
+        <a href="{{ url_for('auth.register') }}" class="inline-flex justify-center px-5 py-3 rounded-lg bg-primary text-white hover:bg-secondary">Create Account</a>
+        {% endif %}
+    </div>
+
+    <div class="grid lg:grid-cols-4 gap-6 mb-10">
+        {% for product in products %}
+        <section class="bg-white rounded-xl shadow-sm border {% if product.code == 'NATIONAL' %}border-primary{% else %}border-gray-200{% endif %} p-6 flex flex-col">
+            <div class="mb-5">
+                <p class="text-xs font-medium text-gray-500 uppercase tracking-wide">{{ product.product_type|replace('_', ' ')|title }}</p>
+                <h2 class="text-2xl font-bold text-gray-900 mt-2">{{ product.name }}</h2>
+                <p class="text-sm text-gray-600 mt-3">{{ product.description }}</p>
+            </div>
+
+            {% if product.pack %}
+            <div class="rounded-lg bg-gray-50 p-4 mb-5">
+                <p class="text-sm text-gray-600">Scope</p>
+                <p class="font-medium text-gray-900 mt-1">
+                    {% if product.pack.regions_allowed == 6 %}All 6 regions{% else %}{{ product.pack.regions_allowed }} region{% if product.pack.regions_allowed > 1 %}s{% endif %}{% endif %}
+                </p>
+                <p class="text-sm text-gray-600 mt-1">{% if product.pack.crops_allowed %}Up to {{ product.pack.crops_allowed }} crops{% else %}All crops{% endif %}</p>
+            </div>
+            <div class="mb-6">
+                <p class="text-3xl font-bold text-gray-900">${{ "{:,}".format(product.pack.price_usd) }}</p>
+                <p class="text-sm text-gray-500">One-time licensed snapshot</p>
+            </div>
+            <ul class="space-y-2 text-sm text-gray-600 mb-6 flex-grow">
+                <li>All four intelligence datasets</li>
+                <li>Permanent snapshot access</li>
+                <li>CSV export through existing entitlement rules</li>
+                <li>Document metadata only when Phase 3.4 gates pass</li>
+            </ul>
+            <div class="space-y-3">
+                <a href="{{ url_for('subscriber.packs') }}" class="block text-center px-4 py-2 rounded-lg bg-primary text-white hover:bg-secondary">View Pack Checkout</a>
+                {% if current_user.is_authenticated %}
+                <a href="{{ url_for('subscriber.commercial_request_new', request_type='upgrade', product=product.code) }}" class="block text-center px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50">Ask About Fit</a>
+                {% endif %}
+            </div>
+            {% else %}
+            <div class="rounded-lg bg-amber-50 border border-amber-200 p-4 mb-5">
+                <p class="font-medium text-amber-900">Custom commercial scope</p>
+                <p class="text-sm text-amber-800 mt-1">Monthly refreshes, API-ready metadata options, and custom region/crop coverage.</p>
+            </div>
+            <ul class="space-y-2 text-sm text-gray-600 mb-6 flex-grow">
+                <li>Annual commercial access</li>
+                <li>Live monthly market movement</li>
+                <li>Optional API access request path</li>
+                <li>Document metadata only through Phase 3.4 gates</li>
+            </ul>
+            {% if current_user.is_authenticated %}
+            <a href="{{ url_for('subscriber.commercial_request_new', request_type='live_intelligence', product='Live Market Intelligence') }}" class="block text-center px-4 py-2 rounded-lg bg-primary text-white hover:bg-secondary">Request Live Intelligence</a>
+            {% else %}
+            <a href="{{ url_for('auth.register') }}" class="block text-center px-4 py-2 rounded-lg bg-primary text-white hover:bg-secondary">Sign In To Request</a>
+            {% endif %}
+            {% endif %}
+        </section>
+        {% endfor %}
+    </div>
+
+    <section class="bg-white rounded-xl shadow-sm border p-6 mb-10">
+        <h2 class="text-2xl font-bold text-gray-900">Gated Commercial Requests</h2>
+        <p class="text-sm text-gray-600 mt-2">These actions capture commercial intent or send you to an existing governed request flow. They do not grant access automatically.</p>
+        <div class="grid md:grid-cols-3 gap-4 mt-6">
+            {% if current_user.is_authenticated %}
+            <a href="{{ url_for('subscriber.commercial_request_new', request_type='upgrade', product='Dataset Region Crop Upgrade') }}" class="rounded-lg border border-gray-200 p-4 hover:border-primary">
+                <h3 class="font-semibold text-gray-900">Dataset, Region, Or Crop</h3>
+                <p class="text-sm text-gray-600 mt-1">Request coverage that is outside your current subscription or licence scope.</p>
+            </a>
+            <a href="{{ url_for('subscriber.commercial_request_new', request_type='api_access', product='API Metadata') }}" class="rounded-lg border border-gray-200 p-4 hover:border-primary">
+                <h3 class="font-semibold text-gray-900">API Metadata</h3>
+                <p class="text-sm text-gray-600 mt-1">Request API access for metadata-only document and dataset use cases.</p>
+            </a>
+            <a href="{{ url_for('subscriber.new_document_access_request') }}" class="rounded-lg border border-gray-200 p-4 hover:border-primary">
+                <h3 class="font-semibold text-gray-900">Restricted Documents</h3>
+                <p class="text-sm text-gray-600 mt-1">Submit a governed request after metadata is visible under your current entitlement.</p>
+            </a>
+            {% else %}
+            <a href="{{ url_for('auth.register') }}" class="rounded-lg border border-gray-200 p-4 hover:border-primary">
+                <h3 class="font-semibold text-gray-900">Create An Account</h3>
+                <p class="text-sm text-gray-600 mt-1">Sign in before requesting commercial access or restricted document review.</p>
+            </a>
+            {% endif %}
+        </div>
+    </section>
+
+    <section class="bg-gray-900 rounded-xl p-6 text-white">
+        <h2 class="text-2xl font-bold">Access remains governed</h2>
+        <p class="text-gray-300 mt-2 max-w-4xl">Commercial packaging does not bypass subscriptions, licences, live access grants, API client scopes, document publish controls, consent, admin approval, verification, expiry, redaction, or risk gates.</p>
+    </section>
+</div>
+{% endblock %}

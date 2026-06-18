@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+
+{% block title %}Commercial Request - FieldSight Africa{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+    <div class="mb-8">
+        <a href="{{ url_for('subscriber.products') }}" class="text-primary hover:underline text-sm">&larr; Back to Products</a>
+        <h1 class="text-3xl font-bold text-gray-900 mt-3">Commercial Request</h1>
+        <p class="text-gray-600 mt-1">Submit an access enquiry for commercial review. This does not grant access automatically.</p>
+    </div>
+
+    <form method="POST" class="bg-white rounded-xl shadow-sm border p-6 space-y-6">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token is defined else '' }}">
+
+        <div>
+            <label for="request_type" class="block text-sm font-medium text-gray-700 mb-1">Request Type</label>
+            <select id="request_type" name="request_type" required class="w-full rounded-lg border border-gray-300 px-3 py-2">
+                {% for request_type in request_types %}
+                <option value="{{ request_type }}" {% if defaults.request_type == request_type %}selected{% endif %}>{{ request_labels.get(request_type, request_type)|replace('_', ' ')|title }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="grid md:grid-cols-2 gap-5">
+            <div>
+                <label for="contact_name" class="block text-sm font-medium text-gray-700 mb-1">Contact Name</label>
+                <input id="contact_name" name="contact_name" type="text" value="{{ current_user.name }}" class="w-full rounded-lg border border-gray-300 px-3 py-2">
+            </div>
+            <div>
+                <label for="contact_email" class="block text-sm font-medium text-gray-700 mb-1">Contact Email</label>
+                <input id="contact_email" name="contact_email" type="email" value="{{ current_user.email }}" class="w-full rounded-lg border border-gray-300 px-3 py-2">
+            </div>
+        </div>
+
+        <div>
+            <label for="organization_name" class="block text-sm font-medium text-gray-700 mb-1">Organization</label>
+            <input id="organization_name" name="organization_name" type="text" required class="w-full rounded-lg border border-gray-300 px-3 py-2">
+        </div>
+
+        <div class="grid md:grid-cols-2 gap-5">
+            <div>
+                <label for="requested_product" class="block text-sm font-medium text-gray-700 mb-1">Product Or Use Case</label>
+                <input id="requested_product" name="requested_product" type="text" value="{{ defaults.requested_product }}" class="w-full rounded-lg border border-gray-300 px-3 py-2" placeholder="Live Intelligence, API Metadata, Region Upgrade">
+            </div>
+            <div>
+                <label for="dataset_code" class="block text-sm font-medium text-gray-700 mb-1">Dataset Code</label>
+                <input id="dataset_code" name="dataset_code" type="text" value="{{ defaults.dataset_code }}" class="w-full rounded-lg border border-gray-300 px-3 py-2" placeholder="Optional">
+            </div>
+        </div>
+
+        <div class="grid md:grid-cols-2 gap-5">
+            <div>
+                <label for="region_code" class="block text-sm font-medium text-gray-700 mb-1">Region Code</label>
+                <select id="region_code" name="region_code" class="w-full rounded-lg border border-gray-300 px-3 py-2">
+                    <option value="">Optional</option>
+                    {% for code, name in regions.items() %}
+                    <option value="{{ code }}" {% if defaults.region_code == code %}selected{% endif %}>{{ code }} - {{ name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label for="crop_name" class="block text-sm font-medium text-gray-700 mb-1">Crop</label>
+                <input id="crop_name" name="crop_name" type="text" value="{{ defaults.crop_name }}" class="w-full rounded-lg border border-gray-300 px-3 py-2" placeholder="Optional">
+            </div>
+        </div>
+
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-2">Regions Of Interest</label>
+            <div class="grid sm:grid-cols-2 md:grid-cols-3 gap-3">
+                {% for code, name in regions.items() %}
+                <label class="flex items-center text-sm text-gray-700">
+                    <input type="checkbox" name="regions" value="{{ code }}" class="mr-2 rounded text-primary focus:ring-primary">
+                    {{ name }}
+                </label>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div>
+            <label for="message" class="block text-sm font-medium text-gray-700 mb-1">Request Notes</label>
+            <textarea id="message" name="message" rows="5" required class="w-full rounded-lg border border-gray-300 px-3 py-2" placeholder="Describe the unavailable dataset, region, crop, API metadata, live intelligence, or upgrade you need.">{{ defaults.message }}</textarea>
+        </div>
+
+        <div class="rounded-lg bg-amber-50 border border-amber-200 p-4 text-sm text-amber-800">
+            Submission creates a pending commercial request and audit record only. It does not modify subscriptions, licences, API clients, Live Intelligence grants, document metadata gates, or restricted document access.
+        </div>
+
+        <div class="flex flex-col sm:flex-row sm:justify-end gap-3">
+            <a href="{{ url_for('subscriber.my_access') }}" class="px-5 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 text-center">Cancel</a>
+            <button type="submit" class="px-5 py-2 rounded-lg bg-primary text-white hover:bg-secondary">Submit Request</button>
+        </div>
+    </form>
+</div>
+{% endblock %}
