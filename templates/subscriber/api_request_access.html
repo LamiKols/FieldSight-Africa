@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+
+{% block title %}Request API Access - FieldSight Africa{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+    <div class="mb-8">
+        <a href="{{ url_for('subscriber.api_product') }}" class="text-primary hover:underline text-sm">&larr; Back to API Dashboard</a>
+        <h1 class="text-3xl font-bold text-gray-900 mt-3">Request API Access</h1>
+        <p class="text-gray-600 mt-1">Capture a commercial API enquiry for review. This does not create an API client, key, or entitlement.</p>
+    </div>
+
+    <form method="POST" class="bg-white rounded-xl shadow-sm border p-6 space-y-6">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token is defined else '' }}">
+        <input type="hidden" name="request_type" value="api_access">
+        <input type="hidden" name="requested_product" value="API Metadata Access">
+        <input type="hidden" name="dataset_code" value="document_metadata">
+
+        <div class="grid md:grid-cols-2 gap-5">
+            <div>
+                <label for="contact_name" class="block text-sm font-medium text-gray-700 mb-1">Contact Name</label>
+                <input id="contact_name" name="contact_name" type="text" value="{{ current_user.name }}" class="w-full rounded-lg border border-gray-300 px-3 py-2">
+            </div>
+            <div>
+                <label for="contact_email" class="block text-sm font-medium text-gray-700 mb-1">Contact Email</label>
+                <input id="contact_email" name="contact_email" type="email" value="{{ current_user.email }}" class="w-full rounded-lg border border-gray-300 px-3 py-2">
+            </div>
+        </div>
+
+        <div>
+            <label for="organization_name" class="block text-sm font-medium text-gray-700 mb-1">Organization</label>
+            <input id="organization_name" name="organization_name" type="text" required class="w-full rounded-lg border border-gray-300 px-3 py-2">
+        </div>
+
+        <div>
+            <label for="message" class="block text-sm font-medium text-gray-700 mb-1">API Use Case</label>
+            <textarea id="message" name="message" rows="5" required class="w-full rounded-lg border border-gray-300 px-3 py-2" placeholder="Describe your product, expected usage, required filters, and metadata use case."></textarea>
+        </div>
+
+        <div>
+            <p class="block text-sm font-medium text-gray-700 mb-2">Requested Scope</p>
+            <div class="rounded-lg bg-gray-50 border border-gray-200 px-3 py-2 text-sm text-gray-700 font-mono">document_metadata:read</div>
+        </div>
+
+        <div>
+            <p class="block text-sm font-medium text-gray-700 mb-2">Metadata Fields Available After Approval And Gates</p>
+            <div class="flex flex-wrap gap-2">
+                {% for field in safe_fields %}
+                <span class="px-3 py-1 rounded-full bg-gray-100 text-gray-700 text-sm">{{ field }}</span>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="rounded-lg bg-amber-50 border border-amber-200 p-4 text-sm text-amber-800">
+            API enquiries are reviewed commercially. Submission creates a pending request and audit record only. No API client, key, scope, subscription, licence, or document metadata access is granted automatically.
+        </div>
+
+        <div class="flex flex-col sm:flex-row sm:justify-end gap-3">
+            <a href="{{ url_for('subscriber.api_product') }}" class="px-5 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 text-center">Cancel</a>
+            <button type="submit" class="px-5 py-2 rounded-lg bg-primary text-white hover:bg-secondary">Submit API Request</button>
+        </div>
+    </form>
+</div>
+{% endblock %}

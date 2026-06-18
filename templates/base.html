@@ -41,6 +41,7 @@
                         {% if current_user.is_authenticated %}
                             <a href="{{ url_for('subscriber.my_access') }}" class="text-gray-600 hover:text-primary px-3 py-2">My Access</a>
                             <a href="{{ url_for('subscriber.datasets') }}" class="text-gray-600 hover:text-primary px-3 py-2">Datasets</a>
+                            <a href="{{ url_for('subscriber.api_product') }}" class="text-gray-600 hover:text-primary px-3 py-2">API</a>
                             <a href="{{ url_for('subscriber.document_metadata') }}" class="text-gray-600 hover:text-primary px-3 py-2">Document Metadata</a>
                             {% if current_partner_profile %}
                                 <a href="{{ url_for('partner.dashboard') }}" class="text-gray-600 hover:text-primary px-3 py-2">Partner Portal</a>

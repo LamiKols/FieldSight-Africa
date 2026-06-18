@@ -132,7 +132,7 @@
                     <h2 class="text-xl font-semibold text-gray-900">API And Document Metadata</h2>
                     <p class="text-sm text-gray-600">API clients and governed metadata access remain read-only unless separately approved.</p>
                 </div>
-                <a href="{{ url_for('subscriber.commercial_request_new', request_type='api_access', product='API Metadata') }}" class="text-sm text-primary hover:underline">Request API</a>
+                <a href="{{ url_for('subscriber.api_request_access') }}" class="text-sm text-primary hover:underline">Request API</a>
             </div>
             <div class="space-y-4">
                 {% for client in api_summary.clients %}
