@@ -160,6 +160,20 @@ DOCUMENT_ACCESS_REQUEST_STATUSES = [
     "cancelled",
 ]
 
+COMMERCIAL_REQUEST_TYPES = [
+    "live_intelligence",
+    "api_access",
+    "upgrade",
+]
+
+COMMERCIAL_REQUEST_STATUSES = [
+    "pending",
+    "in_review",
+    "contacted",
+    "closed",
+    "cancelled",
+]
+
 CONSENT_STATUSES = [
     "not_requested",
     "requested",
@@ -1073,6 +1087,30 @@ class DocumentAccessRequest(TimestampMixin, db.Model):
     user = db.relationship('User', foreign_keys=[user_id], backref='document_access_requests')
     api_client = db.relationship('ApiClient', backref='document_access_requests')
     reviewed_by_user = db.relationship('User', foreign_keys=[reviewed_by_user_id], backref='reviewed_document_access_requests')
+
+
+class CommercialRequest(TimestampMixin, db.Model):
+    __tablename__ = 'commercial_requests'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    request_type = db.Column(db.String(80), nullable=False)
+    organization_name = db.Column(db.String(180))
+    contact_name = db.Column(db.String(120))
+    contact_email = db.Column(db.String(120))
+    requested_product = db.Column(db.String(120))
+    dataset_code = db.Column(db.String(80))
+    region_code = db.Column(db.String(20))
+    crop_name = db.Column(db.String(120))
+    message = db.Column(db.Text)
+    context_json = db.Column(db.JSON, default=dict)
+    status = db.Column(db.String(50), default='pending')
+    reviewed_by_user_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+    reviewed_at = db.Column(db.DateTime)
+    review_notes = db.Column(db.Text)
+
+    user = db.relationship('User', foreign_keys=[user_id], backref='commercial_requests')
+    reviewed_by_user = db.relationship('User', foreign_keys=[reviewed_by_user_id], backref='reviewed_commercial_requests')
 
 
 class ActorConsentRecord(TimestampMixin, db.Model):

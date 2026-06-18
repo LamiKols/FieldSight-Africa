@@ -26,6 +26,10 @@
     <div class="mb-8">
         <h1 class="text-3xl font-bold text-gray-900">Welcome, {{ current_user.name }}</h1>
         <p class="text-gray-600 mt-1">Access your agricultural intelligence data</p>
+        <div class="flex flex-wrap gap-3 mt-4">
+            <a href="{{ url_for('subscriber.my_access') }}" class="px-4 py-2 rounded-lg bg-primary text-white hover:bg-secondary">My Access</a>
+            <a href="{{ url_for('subscriber.products') }}" class="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50">Products</a>
+        </div>
     </div>
 
     <div class="grid md:grid-cols-3 gap-6 mb-8">

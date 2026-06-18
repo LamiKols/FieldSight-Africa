@@ -15,16 +15,22 @@ from document_access import (
     safe_document_metadata_payload,
 )
 from models import (
+    COMMERCIAL_REQUEST_TYPES,
     DOCUMENT_ACCESS_REQUEST_TYPES,
     ActorDocument,
+    ApiClient,
     AuditLog,
+    CommercialRequest,
+    Crop,
     Dataset,
     DatasetMonth,
     DatasetRecord,
     DocumentAccessRequest,
+    DocumentEntitlement,
     ExportLog,
     License,
     LicensedPack,
+    LiveIntelligenceAccess,
     NIGERIA_REGIONS,
     ViewLog,
     db,
@@ -34,6 +40,45 @@ from models import (
 subscriber_bp = Blueprint('subscriber', __name__)
 
 RATE_LIMIT_VIEWS_PER_MINUTE = 30
+
+COMMERCIAL_REQUEST_AUDIT_ACTIONS = {
+    'live_intelligence': 'commercial_live_intelligence_request_created',
+    'api_access': 'commercial_api_access_request_created',
+    'upgrade': 'commercial_upgrade_request_created',
+}
+
+COMMERCIAL_REQUEST_LABELS = {
+    'live_intelligence': 'Live Intelligence',
+    'api_access': 'API Access',
+    'upgrade': 'Upgrade Enquiry',
+}
+
+PRODUCT_CATALOGUE = [
+    {
+        'code': 'CORE_REGIONAL',
+        'name': 'Core Regional',
+        'product_type': 'licensed_pack',
+        'description': 'One-region snapshot package for focused regional intelligence.',
+    },
+    {
+        'code': 'EXPANDED_REGIONAL',
+        'name': 'Expanded Regional',
+        'product_type': 'licensed_pack',
+        'description': 'Two-region snapshot package for broader commercial coverage.',
+    },
+    {
+        'code': 'NATIONAL',
+        'name': 'National',
+        'product_type': 'licensed_pack',
+        'description': 'National snapshot coverage across all six Nigerian regions.',
+    },
+    {
+        'code': 'LIVE_MARKET_INTELLIGENCE',
+        'name': 'Live Market Intelligence',
+        'product_type': 'live_intelligence',
+        'description': 'Commercial annual access with monthly updates and custom scope.',
+    },
+]
 
 
 def data_access_required(f):
@@ -98,6 +143,162 @@ def clean_subscriber_form_value(field_name):
     return value.strip() if value else ''
 
 
+def safe_query_value(field_name, default=''):
+    value = request.args.get(field_name, default)
+    return value.strip() if isinstance(value, str) else default
+
+
+def active_live_access_for_user(user):
+    now = datetime.utcnow()
+    return (
+        LiveIntelligenceAccess.query.filter_by(user_id=user.id, active=True)
+        .filter(LiveIntelligenceAccess.start_date <= now, LiveIntelligenceAccess.end_date >= now)
+        .order_by(LiveIntelligenceAccess.end_date.desc())
+        .all()
+    )
+
+
+def document_metadata_access_summary(user):
+    visible_items = []
+    blocked_count = 0
+    for document in externally_candidate_documents():
+        allowed, _reasons, publish_control, _extraction_run = document_metadata_access_decision(
+            user,
+            document,
+            'subscriber_portal',
+        )
+        if allowed:
+            visible_items.append(safe_document_metadata_payload(document, 'subscriber_portal', publish_control=publish_control))
+        else:
+            blocked_count += 1
+    return {
+        'visible_count': len(visible_items),
+        'blocked_count': blocked_count,
+        'items': visible_items,
+    }
+
+
+def api_access_summary(user):
+    clients = ApiClient.query.filter_by(owner_user_id=user.id).order_by(ApiClient.created_at.desc()).all()
+    active_clients = [client for client in clients if client.status == 'active']
+    metadata_enabled = [
+        client for client in active_clients
+        if 'document_metadata:read' in (client.scopes or [])
+    ]
+    return {
+        'clients': clients,
+        'active_clients': active_clients,
+        'metadata_enabled': metadata_enabled,
+    }
+
+
+def access_scope_context(user):
+    entitlements = get_user_entitlements(user)
+    datasets = Dataset.query.order_by(Dataset.name).all()
+    active_dataset_codes = set(entitlements.get('datasets') or [])
+    dataset_items = [
+        {
+            'dataset': dataset,
+            'available': dataset.code in active_dataset_codes,
+        }
+        for dataset in datasets
+    ]
+
+    active_region_codes = set(entitlements.get('regions') or [])
+    region_items = [
+        {
+            'code': code,
+            'name': name,
+            'available': code in active_region_codes,
+        }
+        for code, name in NIGERIA_REGIONS.items()
+    ]
+
+    crops = Crop.query.filter_by(active=True).order_by(Crop.name).all()
+    entitled_crops = entitlements.get('crops')
+    crop_items = [
+        {
+            'name': crop.name,
+            'available': entitled_crops is None or crop.name in (entitled_crops or []),
+        }
+        for crop in crops
+    ]
+
+    return {
+        'entitlements': entitlements,
+        'datasets': dataset_items,
+        'regions': region_items,
+        'crops': crop_items,
+    }
+
+
+def product_catalogue_items():
+    packs_by_code = {
+        pack.code: pack
+        for pack in LicensedPack.query.filter_by(active=True).all()
+    }
+    items = []
+    for config in PRODUCT_CATALOGUE:
+        pack = packs_by_code.get(config['code'])
+        items.append({
+            **config,
+            'pack': pack,
+        })
+    return items
+
+
+def commercial_request_defaults():
+    request_type = safe_query_value('request_type', 'upgrade')
+    if request_type not in COMMERCIAL_REQUEST_TYPES:
+        request_type = 'upgrade'
+    return {
+        'request_type': request_type,
+        'requested_product': safe_query_value('product'),
+        'dataset_code': safe_query_value('dataset_code'),
+        'region_code': safe_query_value('region_code'),
+        'crop_name': safe_query_value('crop_name'),
+        'message': safe_query_value('message'),
+    }
+
+
+def create_commercial_request_from_form(request_type=None, context_json=None):
+    selected_type = request_type or clean_subscriber_form_value('request_type') or 'upgrade'
+    if selected_type not in COMMERCIAL_REQUEST_TYPES:
+        selected_type = 'upgrade'
+
+    commercial_request = CommercialRequest(
+        user_id=current_user.id,
+        request_type=selected_type,
+        organization_name=clean_subscriber_form_value('organization_name') or clean_subscriber_form_value('organization'),
+        contact_name=clean_subscriber_form_value('contact_name') or clean_subscriber_form_value('name') or current_user.name,
+        contact_email=clean_subscriber_form_value('contact_email') or clean_subscriber_form_value('email') or current_user.email,
+        requested_product=clean_subscriber_form_value('requested_product'),
+        dataset_code=clean_subscriber_form_value('dataset_code'),
+        region_code=clean_subscriber_form_value('region_code'),
+        crop_name=clean_subscriber_form_value('crop_name'),
+        message=clean_subscriber_form_value('message'),
+        context_json=context_json or {},
+        status='pending',
+    )
+    db.session.add(commercial_request)
+    db.session.flush()
+    add_subscriber_audit(
+        COMMERCIAL_REQUEST_AUDIT_ACTIONS[selected_type],
+        'commercial_request',
+        commercial_request.id,
+        after_values={
+            'request_type': commercial_request.request_type,
+            'requested_product': commercial_request.requested_product,
+            'dataset_code': commercial_request.dataset_code,
+            'region_code': commercial_request.region_code,
+            'crop_name': commercial_request.crop_name,
+            'auto_granted': False,
+            'entitlement_changed': False,
+        },
+    )
+    return commercial_request
+
+
 @subscriber_bp.route('/dashboard')
 @login_required
 def dashboard():
@@ -122,6 +323,46 @@ def dashboard():
                            current_month=current_month,
                            entitlements=entitlements,
                            region_names=region_names)
+
+
+@subscriber_bp.route('/subscriber/my-access')
+@login_required
+def my_access():
+    subscription = current_user.get_active_subscription()
+    plan = current_user.get_plan()
+    scope_context = access_scope_context(current_user)
+    licenses = License.query.filter_by(user_id=current_user.id).order_by(License.created_at.desc()).all()
+    live_accesses = active_live_access_for_user(current_user)
+    api_summary = api_access_summary(current_user)
+    document_summary = document_metadata_access_summary(current_user)
+    document_entitlements = DocumentEntitlement.query.filter_by(user_id=current_user.id, active=True).all()
+    access_requests = (
+        DocumentAccessRequest.query.filter_by(user_id=current_user.id)
+        .order_by(DocumentAccessRequest.created_at.desc())
+        .limit(8)
+        .all()
+    )
+    commercial_requests = (
+        CommercialRequest.query.filter_by(user_id=current_user.id)
+        .order_by(CommercialRequest.created_at.desc())
+        .limit(8)
+        .all()
+    )
+
+    return render_template(
+        'subscriber/my_access.html',
+        subscription=subscription,
+        plan=plan,
+        licenses=licenses,
+        live_accesses=live_accesses,
+        api_summary=api_summary,
+        document_summary=document_summary,
+        document_entitlements=document_entitlements,
+        access_requests=access_requests,
+        commercial_requests=commercial_requests,
+        request_labels=COMMERCIAL_REQUEST_LABELS,
+        **scope_context,
+    )
 
 
 @subscriber_bp.route('/datasets')
@@ -329,6 +570,77 @@ def new_document_access_request():
     )
 
 
+@subscriber_bp.route('/subscriber/products')
+def products():
+    entitlements = get_user_entitlements(current_user) if current_user.is_authenticated else None
+    return render_template(
+        'subscriber/products.html',
+        products=product_catalogue_items(),
+        entitlements=entitlements,
+        regions=NIGERIA_REGIONS,
+        request_labels=COMMERCIAL_REQUEST_LABELS,
+    )
+
+
+@subscriber_bp.route('/subscriber/commercial-request/new', methods=['GET', 'POST'])
+@login_required
+def commercial_request_new():
+    defaults = commercial_request_defaults()
+    if request.method == 'POST':
+        selected_type = clean_subscriber_form_value('request_type') or defaults['request_type']
+        if selected_type not in COMMERCIAL_REQUEST_TYPES:
+            flash('Please choose a supported commercial request type.', 'error')
+            return render_template(
+                'subscriber/commercial_request_form.html',
+                defaults=defaults,
+                request_types=COMMERCIAL_REQUEST_TYPES,
+                request_labels=COMMERCIAL_REQUEST_LABELS,
+                regions=NIGERIA_REGIONS,
+            )
+        organization_name = clean_subscriber_form_value('organization_name')
+        message = clean_subscriber_form_value('message')
+        if not organization_name:
+            flash('Organization name is required.', 'error')
+            return render_template(
+                'subscriber/commercial_request_form.html',
+                defaults=defaults,
+                request_types=COMMERCIAL_REQUEST_TYPES,
+                request_labels=COMMERCIAL_REQUEST_LABELS,
+                regions=NIGERIA_REGIONS,
+            )
+        if not message:
+            flash('Please include a short note about the access you need.', 'error')
+            return render_template(
+                'subscriber/commercial_request_form.html',
+                defaults=defaults,
+                request_types=COMMERCIAL_REQUEST_TYPES,
+                request_labels=COMMERCIAL_REQUEST_LABELS,
+                regions=NIGERIA_REGIONS,
+            )
+
+        context_json = {
+            'source_route': request.referrer,
+            'entitlement_access_type': get_user_entitlements(current_user).get('access_type'),
+            'regions_requested': request.form.getlist('regions'),
+            'commercial_packaging_phase': '4.0',
+        }
+        commercial_request = create_commercial_request_from_form(
+            request_type=selected_type,
+            context_json=context_json,
+        )
+        db.session.commit()
+        flash('Commercial request captured. No access has been granted automatically.', 'success')
+        return redirect(url_for('subscriber.my_access', request_id=commercial_request.id))
+
+    return render_template(
+        'subscriber/commercial_request_form.html',
+        defaults=defaults,
+        request_types=COMMERCIAL_REQUEST_TYPES,
+        request_labels=COMMERCIAL_REQUEST_LABELS,
+        regions=NIGERIA_REGIONS,
+    )
+
+
 @subscriber_bp.route('/datasets/<dataset_code>/<month>')
 @login_required
 @data_access_required
@@ -508,11 +820,16 @@ def live_intelligence():
 @login_required
 def live_intelligence_request():
     """Handle Live Intelligence access request form submission."""
-    name = request.form.get('name')
-    email = request.form.get('email')
-    organization = request.form.get('organization')
     regions_requested = request.form.getlist('regions')
-    message = request.form.get('message')
-    
+    context_json = {
+        'source_route': 'subscriber.live_intelligence_request',
+        'regions_requested': regions_requested,
+        'commercial_packaging_phase': '4.0',
+    }
+    create_commercial_request_from_form(
+        request_type='live_intelligence',
+        context_json=context_json,
+    )
+    db.session.commit()
     flash('Thank you for your interest! Our team will contact you within 2 business days to discuss your Live Intelligence requirements.', 'success')
     return redirect(url_for('subscriber.live_intelligence'))

@@ -1,0 +1,179 @@
+{% extends "base.html" %}
+
+{% block title %}Commercial Dashboard - FieldSight Africa{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="mb-8">
+        <a href="{{ url_for('admin.dashboard') }}" class="text-primary hover:underline text-sm">&larr; Back to Admin Dashboard</a>
+        <h1 class="text-3xl font-bold text-gray-900 mt-3">Commercial Dashboard</h1>
+        <p class="text-gray-600 mt-1">Commercial packaging readiness, requests, API clients, and gated-access activity.</p>
+    </div>
+
+    <div class="grid md:grid-cols-5 gap-6 mb-8">
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <p class="text-sm text-gray-500">Licensed Products</p>
+            <p class="text-3xl font-bold text-gray-900 mt-2">{{ active_packs|length }}</p>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <p class="text-sm text-gray-500">Active Subscriptions</p>
+            <p class="text-3xl font-bold text-gray-900 mt-2">{{ active_subscriptions|length }}</p>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <p class="text-sm text-gray-500">API Clients</p>
+            <p class="text-3xl font-bold text-gray-900 mt-2">{{ api_clients|length }}</p>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <p class="text-sm text-gray-500">Document Requests</p>
+            <p class="text-3xl font-bold text-gray-900 mt-2">{{ access_requests|length }}</p>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <p class="text-sm text-gray-500">Commercial Requests</p>
+            <p class="text-3xl font-bold text-gray-900 mt-2">{{ commercial_requests|length }}</p>
+        </div>
+    </div>
+
+    <div class="grid lg:grid-cols-2 gap-6 mb-8">
+        <section class="bg-white rounded-xl shadow-sm border overflow-hidden">
+            <div class="px-6 py-4 border-b">
+                <h2 class="text-xl font-semibold text-gray-900">Licensed Pack Catalogue</h2>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Pack</th>
+                            <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Scope</th>
+                            <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Price</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y">
+                        {% for pack in active_packs %}
+                        <tr>
+                            <td class="px-5 py-4 text-sm text-gray-900">{{ pack.name }}</td>
+                            <td class="px-5 py-4 text-sm text-gray-700">
+                                {% if pack.regions_allowed == 6 %}All regions{% else %}{{ pack.regions_allowed }} region{% if pack.regions_allowed > 1 %}s{% endif %}{% endif %};
+                                {% if pack.crops_allowed %}{{ pack.crops_allowed }} crops{% else %}all crops{% endif %}
+                            </td>
+                            <td class="px-5 py-4 text-sm text-gray-700">${{ "{:,}".format(pack.price_usd) }}</td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="3" class="px-6 py-8 text-center text-gray-500">No active packs.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="bg-white rounded-xl shadow-sm border overflow-hidden">
+            <div class="px-6 py-4 border-b">
+                <h2 class="text-xl font-semibold text-gray-900">Commercial Requests</h2>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
+                            <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">User</th>
+                            <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Scope</th>
+                            <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y">
+                        {% for commercial_request in commercial_requests %}
+                        <tr>
+                            <td class="px-5 py-4 text-sm text-gray-900">{{ commercial_request.request_type|replace('_', ' ')|title }}</td>
+                            <td class="px-5 py-4 text-sm text-gray-700">{{ commercial_request.user.email if commercial_request.user else 'Unknown' }}</td>
+                            <td class="px-5 py-4 text-sm text-gray-700">{{ commercial_request.requested_product or commercial_request.dataset_code or commercial_request.region_code or commercial_request.crop_name or 'General' }}</td>
+                            <td class="px-5 py-4 text-sm text-gray-700">{{ commercial_request.status|replace('_', ' ')|title }}</td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="4" class="px-6 py-8 text-center text-gray-500">No commercial requests.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </div>
+
+    <div class="grid lg:grid-cols-2 gap-6 mb-8">
+        <section class="bg-white rounded-xl shadow-sm border overflow-hidden">
+            <div class="px-6 py-4 border-b">
+                <h2 class="text-xl font-semibold text-gray-900">Subscriptions And Licences</h2>
+            </div>
+            <div class="divide-y">
+                {% for subscription in active_subscriptions %}
+                <div class="px-6 py-4 text-sm">
+                    <p class="font-medium text-gray-900">{{ subscription.user.email if subscription.user else 'Subscriber' }} - {{ subscription.plan_code }}</p>
+                    <p class="text-gray-600">Regions: {{ subscription.regions_selected|join(', ') if subscription.regions_selected else 'Not scoped' }}</p>
+                </div>
+                {% else %}
+                <p class="px-6 py-8 text-center text-gray-500">No active subscriptions in the latest sample.</p>
+                {% endfor %}
+                {% for license in recent_licenses %}
+                <div class="px-6 py-4 text-sm bg-gray-50">
+                    <p class="font-medium text-gray-900">{{ license.user.email if license.user else 'Subscriber' }} - {{ license.licensed_pack.name if license.licensed_pack else 'Pack' }}</p>
+                    <p class="text-gray-600">Snapshot: {{ license.snapshot_month }}; Status: {{ license.status|title }}</p>
+                </div>
+                {% endfor %}
+            </div>
+        </section>
+
+        <section class="bg-white rounded-xl shadow-sm border overflow-hidden">
+            <div class="px-6 py-4 border-b">
+                <h2 class="text-xl font-semibold text-gray-900">API Clients And Access Requests</h2>
+            </div>
+            <div class="divide-y">
+                {% for client in api_clients %}
+                <div class="px-6 py-4 text-sm">
+                    <p class="font-medium text-gray-900">{{ client.name }} - {{ client.status|title }}</p>
+                    <p class="text-gray-600">Owner: {{ client.owner_user.email if client.owner_user else 'No owner' }}; Scopes: {{ client.scopes|join(', ') if client.scopes else 'None' }}</p>
+                </div>
+                {% else %}
+                <p class="px-6 py-8 text-center text-gray-500">No API clients in the latest sample.</p>
+                {% endfor %}
+                {% for access_request in access_requests %}
+                <div class="px-6 py-4 text-sm bg-gray-50">
+                    <p class="font-medium text-gray-900">{{ access_request.request_type|replace('_', ' ')|title }} - {{ access_request.status|title }}</p>
+                    <p class="text-gray-600">{{ access_request.user.email if access_request.user else 'API client' }}; {{ access_request.organization_name or 'No organization' }}</p>
+                </div>
+                {% endfor %}
+            </div>
+        </section>
+    </div>
+
+    <div class="grid lg:grid-cols-2 gap-6">
+        <section class="bg-white rounded-xl shadow-sm border overflow-hidden">
+            <div class="px-6 py-4 border-b">
+                <h2 class="text-xl font-semibold text-gray-900">Recent Commercial Audit Events</h2>
+            </div>
+            <div class="divide-y">
+                {% for event in recent_gated_audit_events %}
+                <div class="px-6 py-4 text-sm">
+                    <p class="font-medium text-gray-900">{{ event.action }}</p>
+                    <p class="text-gray-600">{{ event.user.email if event.user else 'System/API' }} - {{ event.created_at.strftime('%Y-%m-%d %H:%M') if event.created_at else '' }}</p>
+                </div>
+                {% else %}
+                <p class="px-6 py-8 text-center text-gray-500">No recent commercial audit events.</p>
+                {% endfor %}
+            </div>
+        </section>
+
+        <section class="bg-white rounded-xl shadow-sm border overflow-hidden">
+            <div class="px-6 py-4 border-b">
+                <h2 class="text-xl font-semibold text-gray-900">Recent Gated Metadata Events</h2>
+            </div>
+            <div class="divide-y">
+                {% for event in recent_gated_document_events %}
+                <div class="px-6 py-4 text-sm">
+                    <p class="font-medium text-gray-900">{{ event.access_type }}</p>
+                    <p class="text-gray-600">{{ event.access_channel or 'unknown channel' }} - {{ event.accessed_at.strftime('%Y-%m-%d %H:%M') if event.accessed_at else '' }}</p>
+                </div>
+                {% else %}
+                <p class="px-6 py-8 text-center text-gray-500">No recent blocked document metadata events.</p>
+                {% endfor %}
+            </div>
+        </section>
+    </div>
+</div>
+{% endblock %}
