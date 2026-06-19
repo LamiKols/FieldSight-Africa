@@ -179,6 +179,14 @@ DOCUMENT_AUTOMATION_RUN_STATUSES = [
     "cancelled",
 ]
 
+AUTOMATION_SCHEDULE_RUN_STATUSES = [
+    "running",
+    "completed",
+    "completed_with_attention",
+    "skipped_disabled",
+    "failed",
+]
+
 COMMERCIAL_REQUEST_TYPES = [
     "live_intelligence",
     "api_access",
@@ -1043,6 +1051,49 @@ class DocumentAutomationRun(TimestampMixin, db.Model):
     retry_of_run = db.relationship('DocumentAutomationRun', remote_side=[id], backref='retry_runs')
     requested_by_user = db.relationship('User', foreign_keys=[requested_by_user_id], backref='requested_document_automation_runs')
     cancelled_by_user = db.relationship('User', foreign_keys=[cancelled_by_user_id], backref='cancelled_document_automation_runs')
+
+
+class AutomationScheduleConfig(TimestampMixin, db.Model):
+    __tablename__ = 'automation_schedule_configs'
+
+    id = db.Column(db.Integer, primary_key=True)
+    schedule_code = db.Column(db.String(80), unique=True, nullable=False, default='document_intelligence')
+    enabled = db.Column(db.Boolean, default=False, nullable=False)
+    batch_limit = db.Column(db.Integer, default=10, nullable=False)
+    stale_run_threshold_minutes = db.Column(db.Integer, default=30, nullable=False)
+    stale_run_action = db.Column(db.String(20), default='requeue', nullable=False)
+    processing_frequency_label = db.Column(db.String(120), default='manual')
+    notes = db.Column(db.Text)
+    last_run_at = db.Column(db.DateTime)
+    last_run_status = db.Column(db.String(50))
+    updated_by_user_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+
+    updated_by_user = db.relationship('User', backref='updated_automation_schedule_configs')
+
+
+class AutomationScheduledRunLog(TimestampMixin, db.Model):
+    __tablename__ = 'automation_scheduled_run_logs'
+
+    id = db.Column(db.Integer, primary_key=True)
+    schedule_config_id = db.Column(db.Integer, db.ForeignKey('automation_schedule_configs.id'), nullable=False)
+    trigger_source = db.Column(db.String(80), nullable=False)
+    status = db.Column(db.String(50), nullable=False, default='running')
+    requested_by_user_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+    started_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    completed_at = db.Column(db.DateTime)
+    queue_count_before = db.Column(db.Integer, default=0)
+    stale_runs_handled = db.Column(db.Integer, default=0)
+    selected_count = db.Column(db.Integer, default=0)
+    processed_count = db.Column(db.Integer, default=0)
+    completed_count = db.Column(db.Integer, default=0)
+    needs_review_count = db.Column(db.Integer, default=0)
+    failed_count = db.Column(db.Integer, default=0)
+    skipped_count = db.Column(db.Integer, default=0)
+    safe_summary_json = db.Column(db.JSON, default=dict)
+    error_code = db.Column(db.String(80))
+
+    schedule_config = db.relationship('AutomationScheduleConfig', backref='run_logs')
+    requested_by_user = db.relationship('User', backref='automation_scheduled_run_logs')
 
 
 class DocumentReview(TimestampMixin, db.Model):
