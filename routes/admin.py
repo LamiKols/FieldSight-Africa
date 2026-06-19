@@ -68,6 +68,16 @@ from routes.partner import (
     document_version_file_metadata,
     resolve_document_storage_path,
 )
+from document_automation import (
+    DEFAULT_BATCH_LIMIT,
+    DEFAULT_STALE_MINUTES,
+    build_confidence_summary,
+    clamp_batch_limit,
+    clamp_stale_minutes,
+    process_automation_run,
+    process_queued_runs,
+    recover_stale_runs,
+)
 
 admin_bp = Blueprint('admin', __name__, url_prefix='/admin')
 
@@ -1620,49 +1630,8 @@ def automation_status_counts():
     }
 
 
-def confidence_values_for_run(extraction_run, reconciliation_rows):
-    values = []
-    if extraction_run and isinstance(extraction_run.confidence_json, dict):
-        for value in extraction_run.confidence_json.values():
-            if isinstance(value, (int, float)):
-                values.append(float(value))
-    for row in reconciliation_rows:
-        if isinstance(row.confidence, (int, float)):
-            values.append(float(row.confidence))
-    return values
-
-
-def confidence_percent(value):
-    if value is None:
-        return None
-    if value <= 1:
-        return round(value * 100, 1)
-    return round(value, 1)
-
-
 def automation_confidence_summary(document):
-    extraction_run = latest_document_extraction_run(document)
-    reconciliation_rows = reconciliation_rows_for_run(extraction_run)
-    values = confidence_values_for_run(extraction_run, reconciliation_rows)
-    average_confidence = (sum(values) / len(values)) if values else None
-    row_status_counts = Counter(row.status or 'unknown' for row in reconciliation_rows)
-    risk_flags = extraction_run.risk_flags_json if extraction_run and extraction_run.risk_flags_json else []
-    mismatches = extraction_run.metadata_mismatches_json if extraction_run and extraction_run.metadata_mismatches_json else []
-    return {
-        'latest_extraction_run_id': extraction_run.id if extraction_run else None,
-        'latest_extraction_status': extraction_run.status if extraction_run else 'missing',
-        'document_intelligence_status': extraction_run.document_intelligence_status if extraction_run else 'not_started',
-        'quality_score': extraction_run.quality_score if extraction_run else None,
-        'average_confidence': confidence_percent(average_confidence),
-        'field_count': len(reconciliation_rows),
-        'accepted_count': row_status_counts.get('accepted', 0),
-        'rejected_count': row_status_counts.get('rejected', 0),
-        'pending_count': row_status_counts.get('pending', 0),
-        'manual_override_count': row_status_counts.get('manually_overridden', 0),
-        'mismatch_count': len(mismatches),
-        'risk_flag_count': len(risk_flags),
-        'low_confidence_count': len([value for value in values if value < 0.6]),
-    }
+    return build_confidence_summary(document)
 
 
 def safe_automation_event(event_type, message=None, metadata=None):
@@ -1939,6 +1908,9 @@ def filtered_automation_runs():
 
 
 def automation_dashboard_context():
+    now = datetime.utcnow()
+    stale_cutoff = now - timedelta(minutes=DEFAULT_STALE_MINUTES)
+    running_runs = DocumentAutomationRun.query.filter_by(status='running').all()
     recent_runs = (
         DocumentAutomationRun.query
         .order_by(DocumentAutomationRun.created_at.desc(), DocumentAutomationRun.id.desc())
@@ -1954,9 +1926,21 @@ def automation_dashboard_context():
         'status_counts': automation_status_counts(),
         'recent_run_items': [safe_automation_run_item(run) for run in recent_runs],
         'queued_count': DocumentAutomationRun.query.filter_by(status='queued').count(),
-        'running_count': DocumentAutomationRun.query.filter_by(status='running').count(),
+        'running_count': len(running_runs),
+        'completed_count': DocumentAutomationRun.query.filter_by(status='completed').count(),
         'needs_review_count': DocumentAutomationRun.query.filter_by(status='needs_review').count(),
         'failed_count': DocumentAutomationRun.query.filter_by(status='failed').count(),
+        'cancelled_count': DocumentAutomationRun.query.filter_by(status='cancelled').count(),
+        'processed_last_24h_count': DocumentAutomationRun.query.filter(
+            DocumentAutomationRun.completed_at >= now - timedelta(hours=24),
+            DocumentAutomationRun.status.in_(['completed', 'needs_review', 'failed']),
+        ).count(),
+        'stale_running_count': len([
+            run for run in running_runs
+            if (run.started_at or run.updated_at or run.created_at) <= stale_cutoff
+        ]),
+        'default_batch_limit': DEFAULT_BATCH_LIMIT,
+        'default_stale_minutes': DEFAULT_STALE_MINUTES,
         'average_confidence': round(sum(confidence_values) / len(confidence_values), 1) if confidence_values else None,
     }
 
@@ -2051,6 +2035,53 @@ def intelligence_automation_run_detail(run_id):
         audit_events=audit_events,
         review_context=review_context,
     )
+
+
+@admin_bp.route('/intelligence-automation/runs/<int:run_id>/process', methods=['POST'])
+@login_required
+@admin_required
+def intelligence_automation_run_process(run_id):
+    automation_run = DocumentAutomationRun.query.get_or_404(run_id)
+    result = process_automation_run(automation_run.id, actor_user_id=current_user.id)
+    if not result['processed']:
+        if result['error_code'] == 'not_queued':
+            flash('Only queued automation runs can be processed.', 'error')
+        else:
+            flash('Automation run could not be processed.', 'error')
+    elif result['status'] == 'completed':
+        flash('Automation run processed successfully. No data was published.', 'success')
+    elif result['status'] == 'needs_review':
+        flash('Automation processing completed and requires human review. No data was published.', 'warning')
+    else:
+        flash('Automation processing failed safely. Review the run before retrying.', 'error')
+    return redirect(url_for('admin.intelligence_automation_run_detail', run_id=automation_run.id))
+
+
+@admin_bp.route('/intelligence-automation/process-queued', methods=['POST'])
+@login_required
+@admin_required
+def intelligence_automation_process_queued():
+    limit = clamp_batch_limit(request.form.get('limit'))
+    stale_minutes = clamp_stale_minutes(request.form.get('stale_minutes'))
+    stale_action = clean_admin_form_value('stale_action')
+    if stale_action not in {'requeue', 'fail'}:
+        stale_action = 'requeue'
+
+    stale_summary = recover_stale_runs(
+        stale_minutes=stale_minutes,
+        action=stale_action,
+        actor_user_id=current_user.id,
+    )
+    batch_summary = process_queued_runs(limit=limit, actor_user_id=current_user.id)
+    flash(
+        f"Processed {batch_summary['processed']} run(s): "
+        f"{batch_summary['completed']} completed, "
+        f"{batch_summary['needs_review']} needs review, "
+        f"{batch_summary['failed']} failed. "
+        f"Handled {stale_summary['total']} stale run(s).",
+        'success' if not batch_summary['failed'] else 'warning',
+    )
+    return redirect(url_for('admin.intelligence_automation_dashboard'))
 
 
 @admin_bp.route('/intelligence-automation/runs/<int:run_id>/retry', methods=['POST'])
