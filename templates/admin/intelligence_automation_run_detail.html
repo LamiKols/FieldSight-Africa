@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+
+{% block title %}Automation Run #{{ automation_run.id }} - FieldSight Africa{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4 mb-8">
+        <div>
+            <a href="{{ url_for('admin.intelligence_automation_runs') }}" class="text-primary hover:underline text-sm">&larr; Back to Runs</a>
+            <h1 class="text-3xl font-bold text-gray-900 mt-3">Automation Run #{{ automation_run.id }}</h1>
+            <p class="text-gray-600 mt-1">{{ item.document_label }} | {{ item.document_type }} | {{ item.partner_name }}</p>
+        </div>
+        <div class="flex flex-wrap gap-3">
+            {% if item.document %}
+            <a href="{{ url_for('admin.document_review_detail', document_id=item.document.id) }}" class="border border-gray-300 text-gray-700 px-5 py-2 rounded-lg hover:border-primary hover:text-primary transition">Document Review</a>
+            {% endif %}
+            {% if automation_run.status in retryable_statuses %}
+            <form method="POST" action="{{ url_for('admin.intelligence_automation_run_retry', run_id=automation_run.id) }}">
+                <button type="submit" class="bg-primary text-white px-5 py-2 rounded-lg hover:bg-secondary transition">Retry</button>
+            </form>
+            {% endif %}
+            {% if automation_run.status in cancellable_statuses %}
+            <form method="POST" action="{{ url_for('admin.intelligence_automation_run_cancel', run_id=automation_run.id) }}">
+                <button type="submit" class="border border-red-300 text-red-700 px-5 py-2 rounded-lg hover:bg-red-50 transition">Cancel</button>
+            </form>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="rounded-xl bg-blue-50 border border-blue-200 p-5 mb-6 text-sm text-blue-800">
+        This run tracks internal automation state only. It does not create subscriber access, API output, buyer access, public links, or document downloads.
+    </div>
+
+    <div class="grid lg:grid-cols-4 gap-6 mb-6">
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <h2 class="text-lg font-semibold text-gray-900 mb-3">Run Status</h2>
+            <p class="text-2xl font-bold text-gray-900">{{ status_labels.get(automation_run.status, automation_run.status|replace('_', ' ')|title) }}</p>
+            <p class="text-sm text-gray-500 mt-1">{{ automation_run.trigger_source|replace('_', ' ')|title }}</p>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <h2 class="text-lg font-semibold text-gray-900 mb-3">Automated Extraction</h2>
+            <p class="text-2xl font-bold text-gray-900">{{ item.latest_extraction_status|replace('_', ' ')|title }}</p>
+            <p class="text-sm text-gray-500 mt-1">{{ item.document_intelligence_status|replace('_', ' ')|title }}</p>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <h2 class="text-lg font-semibold text-gray-900 mb-3">Human Review</h2>
+            <p class="text-2xl font-bold text-gray-900">{{ item.document.review_status|replace('_', ' ')|title if item.document else 'Unknown' }}</p>
+            <p class="text-sm text-gray-500 mt-1">{{ item.document.verification_status|replace('_', ' ')|title if item.document else '' }}</p>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <h2 class="text-lg font-semibold text-gray-900 mb-3">Publish Readiness</h2>
+            <p class="text-2xl font-bold text-gray-900">{{ item.publish_controls|length }}</p>
+            <p class="text-sm text-gray-500 mt-1">Stored target records</p>
+        </div>
+    </div>
+
+    <div class="grid lg:grid-cols-3 gap-6 mb-6">
+        <section class="bg-white rounded-xl shadow-sm border p-6">
+            <h2 class="text-xl font-semibold text-gray-900 mb-5">Confidence Summary</h2>
+            <dl class="space-y-3 text-sm">
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Average Confidence</dt><dd class="font-medium text-gray-900">{{ item.confidence.average_confidence if item.confidence.average_confidence is not none else 'n/a' }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Quality Score</dt><dd class="font-medium text-gray-900">{{ item.confidence.quality_score if item.confidence.quality_score is not none else 'n/a' }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Fields</dt><dd class="font-medium text-gray-900">{{ item.confidence.field_count or 0 }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Accepted</dt><dd class="font-medium text-gray-900">{{ item.confidence.accepted_count or 0 }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Pending</dt><dd class="font-medium text-gray-900">{{ item.confidence.pending_count or 0 }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Mismatches</dt><dd class="font-medium text-gray-900">{{ item.confidence.mismatch_count or 0 }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Risk Flags</dt><dd class="font-medium text-gray-900">{{ item.confidence.risk_flag_count or 0 }}</dd></div>
+            </dl>
+        </section>
+
+        <section class="bg-white rounded-xl shadow-sm border p-6">
+            <h2 class="text-xl font-semibold text-gray-900 mb-5">Eligibility Snapshot</h2>
+            <div class="space-y-3">
+                {% for check in automation_run.eligibility_checks_json or [] %}
+                <div class="flex items-start justify-between gap-4 text-sm">
+                    <div>
+                        <p class="font-medium text-gray-900">{{ check.label }}</p>
+                        <p class="text-xs text-gray-500">{{ check.message }}</p>
+                    </div>
+                    <span class="text-xs uppercase rounded-full px-3 py-1 border {{ 'bg-emerald-50 text-emerald-700 border-emerald-200' if check.status == 'pass' else 'bg-red-50 text-red-700 border-red-200' }}">{{ check.status|title }}</span>
+                </div>
+                {% else %}
+                <p class="text-sm text-gray-600">No eligibility snapshot is stored for this run.</p>
+                {% endfor %}
+            </div>
+        </section>
+
+        <section class="bg-white rounded-xl shadow-sm border p-6">
+            <h2 class="text-xl font-semibold text-gray-900 mb-5">Safe Events</h2>
+            <div class="space-y-3">
+                {% for event in automation_run.event_log_json or [] %}
+                <div class="rounded-lg border border-gray-200 p-3">
+                    <p class="text-sm font-medium text-gray-900">{{ event.event_type|replace('_', ' ')|title }}</p>
+                    <p class="text-xs text-gray-500 mt-1">{{ event.recorded_at }}</p>
+                    {% if event.message %}
+                    <p class="text-sm text-gray-700 mt-2">{{ event.message }}</p>
+                    {% endif %}
+                </div>
+                {% else %}
+                <p class="text-sm text-gray-600">No automation events recorded.</p>
+                {% endfor %}
+            </div>
+        </section>
+    </div>
+
+    <div class="grid lg:grid-cols-2 gap-6">
+        <section class="bg-white rounded-xl shadow-sm border overflow-hidden">
+            <div class="px-6 py-4 border-b">
+                <h2 class="text-xl font-semibold text-gray-900">Publish Target Separation</h2>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Target</th>
+                            <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                            <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Decision</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y">
+                        {% for control in item.publish_controls %}
+                        <tr>
+                            <td class="px-5 py-3 text-sm text-gray-900">{{ control.publish_target|replace('_', ' ')|title }}</td>
+                            <td class="px-5 py-3 text-sm text-gray-700">{{ control.status|replace('_', ' ')|title }}</td>
+                            <td class="px-5 py-3 text-sm text-gray-700">{{ control.admin_decision|replace('_', ' ')|title if control.admin_decision else 'Not Evaluated' }}</td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="3" class="px-6 py-8 text-center text-gray-500">No publish-control targets are stored for this document.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="bg-white rounded-xl shadow-sm border overflow-hidden">
+            <div class="px-6 py-4 border-b">
+                <h2 class="text-xl font-semibold text-gray-900">Audit Trail</h2>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Action</th>
+                            <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">User</th>
+                            <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Created</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y">
+                        {% for audit in audit_events %}
+                        <tr>
+                            <td class="px-5 py-3 text-sm text-gray-900">{{ audit.action|replace('_', ' ')|title }}</td>
+                            <td class="px-5 py-3 text-sm text-gray-700">{{ audit.user.email if audit.user else 'System' }}</td>
+                            <td class="px-5 py-3 text-sm text-gray-500">{{ audit.created_at.strftime('%Y-%m-%d %H:%M') if audit.created_at else '' }}</td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="3" class="px-6 py-8 text-center text-gray-500">No audit events recorded for this run.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </div>
+</div>
+{% endblock %}

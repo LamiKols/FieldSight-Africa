@@ -14,6 +14,9 @@
             <a href="{{ url_for('admin.preview_document', document_id=document.id) }}" class="bg-primary text-white px-5 py-2 rounded-lg hover:bg-secondary transition">Preview</a>
             <a href="{{ url_for('admin.document_redaction_controls', document_id=document.id) }}" class="border border-primary text-primary px-5 py-2 rounded-lg hover:bg-primary hover:text-white transition">Redaction</a>
             <a href="{{ url_for('admin.document_publish_controls', document_id=document.id) }}" class="border border-gray-300 text-gray-700 px-5 py-2 rounded-lg hover:border-primary hover:text-primary transition">Publish Controls</a>
+            <form method="POST" action="{{ url_for('admin.document_automation_run', document_id=document.id) }}">
+                <button type="submit" class="border border-gray-300 text-gray-700 px-5 py-2 rounded-lg hover:border-primary hover:text-primary transition">Queue Automation</button>
+            </form>
         </div>
     </div>
 

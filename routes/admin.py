@@ -20,11 +20,13 @@ from models import (
     COMMERCIAL_REQUEST_STATUSES,
     CommercialFulfilmentAction,
     CommercialRequest,
+    DOCUMENT_AUTOMATION_RUN_STATUSES,
     DOCUMENT_ACCESS_FULFILMENT_ACTION_TYPES,
     DOCUMENT_ACCESS_REQUEST_STATUSES,
     DocumentAccessLog,
     DocumentAccessFulfilmentAction,
     DocumentAccessRequest,
+    DocumentAutomationRun,
     DocumentExtractionRun,
     DocumentFieldReconciliation,
     DocumentPublishControl,
@@ -286,6 +288,35 @@ COMMERCIAL_REPORT_CONVERSION_STATUSES = {
     'approved_for_fulfilment',
     'closed',
 }
+
+AUTOMATION_STATUS_LABELS = {
+    'queued': 'Queued',
+    'running': 'Running',
+    'completed': 'Completed',
+    'failed': 'Failed',
+    'needs_review': 'Needs Review',
+    'cancelled': 'Cancelled',
+}
+
+AUTOMATION_CANCELLABLE_STATUSES = {
+    'queued',
+    'running',
+}
+
+AUTOMATION_RETRYABLE_STATUSES = {
+    'failed',
+    'needs_review',
+    'cancelled',
+}
+
+AUTOMATION_DATE_FILTERS = {
+    '7d': {'label': 'Last 7 days', 'days': 7},
+    '30d': {'label': 'Last 30 days', 'days': 30},
+    '90d': {'label': 'Last 90 days', 'days': 90},
+    'all': {'label': 'All time', 'days': None},
+}
+
+AUTOMATION_DEFAULT_DATE_FILTER = '30d'
 
 
 def admin_required(f):
@@ -1563,6 +1594,373 @@ def filter_admin_review_documents(documents, extraction_status, risk_flag, conse
     return filtered_documents
 
 
+def automation_date_filter_context(selected=None):
+    selected = selected or request.args.get('date_window', AUTOMATION_DEFAULT_DATE_FILTER).strip()
+    if selected not in AUTOMATION_DATE_FILTERS:
+        selected = AUTOMATION_DEFAULT_DATE_FILTER
+    config = AUTOMATION_DATE_FILTERS[selected]
+    cutoff = None
+    if config['days'] is not None:
+        cutoff = datetime.utcnow() - timedelta(days=config['days'])
+    return {
+        'key': selected,
+        'label': config['label'],
+        'cutoff': cutoff,
+        'options': [
+            {'key': key, 'label': value['label']}
+            for key, value in AUTOMATION_DATE_FILTERS.items()
+        ],
+    }
+
+
+def automation_status_counts():
+    return {
+        status: DocumentAutomationRun.query.filter_by(status=status).count()
+        for status in DOCUMENT_AUTOMATION_RUN_STATUSES
+    }
+
+
+def confidence_values_for_run(extraction_run, reconciliation_rows):
+    values = []
+    if extraction_run and isinstance(extraction_run.confidence_json, dict):
+        for value in extraction_run.confidence_json.values():
+            if isinstance(value, (int, float)):
+                values.append(float(value))
+    for row in reconciliation_rows:
+        if isinstance(row.confidence, (int, float)):
+            values.append(float(row.confidence))
+    return values
+
+
+def confidence_percent(value):
+    if value is None:
+        return None
+    if value <= 1:
+        return round(value * 100, 1)
+    return round(value, 1)
+
+
+def automation_confidence_summary(document):
+    extraction_run = latest_document_extraction_run(document)
+    reconciliation_rows = reconciliation_rows_for_run(extraction_run)
+    values = confidence_values_for_run(extraction_run, reconciliation_rows)
+    average_confidence = (sum(values) / len(values)) if values else None
+    row_status_counts = Counter(row.status or 'unknown' for row in reconciliation_rows)
+    risk_flags = extraction_run.risk_flags_json if extraction_run and extraction_run.risk_flags_json else []
+    mismatches = extraction_run.metadata_mismatches_json if extraction_run and extraction_run.metadata_mismatches_json else []
+    return {
+        'latest_extraction_run_id': extraction_run.id if extraction_run else None,
+        'latest_extraction_status': extraction_run.status if extraction_run else 'missing',
+        'document_intelligence_status': extraction_run.document_intelligence_status if extraction_run else 'not_started',
+        'quality_score': extraction_run.quality_score if extraction_run else None,
+        'average_confidence': confidence_percent(average_confidence),
+        'field_count': len(reconciliation_rows),
+        'accepted_count': row_status_counts.get('accepted', 0),
+        'rejected_count': row_status_counts.get('rejected', 0),
+        'pending_count': row_status_counts.get('pending', 0),
+        'manual_override_count': row_status_counts.get('manually_overridden', 0),
+        'mismatch_count': len(mismatches),
+        'risk_flag_count': len(risk_flags),
+        'low_confidence_count': len([value for value in values if value < 0.6]),
+    }
+
+
+def safe_automation_event(event_type, message=None, metadata=None):
+    return {
+        'event_type': event_type,
+        'message': message,
+        'metadata': metadata or {},
+        'recorded_at': datetime.utcnow().isoformat(),
+    }
+
+
+def append_automation_event(automation_run, event_type, message=None, metadata=None):
+    events = list(automation_run.event_log_json or [])
+    events.append(safe_automation_event(event_type, message=message, metadata=metadata))
+    automation_run.event_log_json = events
+
+
+def automation_audit_values(automation_run):
+    return {
+        'automation_run_id': automation_run.id,
+        'actor_document_id': automation_run.actor_document_id,
+        'actor_document_version_id': automation_run.actor_document_version_id,
+        'extraction_run_id': automation_run.extraction_run_id,
+        'retry_of_run_id': automation_run.retry_of_run_id,
+        'job_type': automation_run.job_type,
+        'trigger_source': automation_run.trigger_source,
+        'status': automation_run.status,
+        'confidence_summary': automation_run.confidence_summary_json or {},
+        'file_exposed': False,
+        'storage_path_exposed': False,
+        'source_filename_exposed': False,
+        'raw_extraction_text_exposed': False,
+        'api_secret_exposed': False,
+        'auto_published': False,
+        'external_access_created': False,
+    }
+
+
+def add_automation_audit(automation_run, action, before_values=None, after_values=None):
+    document = automation_run.actor_document
+    db.session.add(AuditLog(
+        user_id=current_user.id if current_user.is_authenticated else None,
+        organization_type='partner_organization',
+        organization_id=document.partner_organization_id if document else None,
+        action=action,
+        entity_type='document_automation_run',
+        entity_id=automation_run.id,
+        before_values=before_values,
+        after_values=after_values,
+        ip_address=request.headers.get('X-Forwarded-For', request.remote_addr),
+        user_agent=request.headers.get('User-Agent'),
+    ))
+
+
+def automation_eligibility_context(document):
+    checks = []
+    blocking_reasons = []
+
+    def add_check(key, label, passed, message):
+        checks.append({
+            'key': key,
+            'label': label,
+            'status': 'pass' if passed else 'fail',
+            'message': message,
+        })
+        if not passed:
+            blocking_reasons.append(message)
+
+    version = current_document_version(document)
+    actor = document.market_actor
+    active_consent = get_active_actor_consent(actor)
+    consent_scopes = active_consent.consent_scope_json if active_consent else []
+    consent_channels = active_consent.sharing_channels_json if active_consent else []
+    consent_allows_internal_automation = bool(
+        active_consent
+        and (
+            'use_documents_for_extraction_quality' in consent_scopes
+            or 'admin_review' in consent_channels
+            or 'internal_review' in consent_channels
+        )
+    )
+    active_inflight_run = DocumentAutomationRun.query.filter_by(actor_document_id=document.id).filter(
+        DocumentAutomationRun.status.in_(['queued', 'running'])
+    ).order_by(DocumentAutomationRun.created_at.desc(), DocumentAutomationRun.id.desc()).first()
+
+    add_check(
+        'document_not_archived',
+        'Document is not archived',
+        document.archived_at is None and document.document_status != 'archived',
+        'Document is active for internal automation.' if document.archived_at is None and document.document_status != 'archived' else 'Archived documents are not eligible for automation.',
+    )
+    add_check(
+        'document_not_rejected',
+        'Document is not rejected',
+        document.document_status != 'rejected' and document.review_status != 'rejected',
+        'Document is not rejected.' if document.document_status != 'rejected' and document.review_status != 'rejected' else 'Rejected documents are not eligible for automation.',
+    )
+    add_check(
+        'current_version_exists',
+        'Current version exists',
+        version is not None,
+        'A current document version is available.' if version else 'A current private document version is required.',
+    )
+    add_check(
+        'document_type_exists',
+        'Document type exists',
+        document.document_type is not None and document.document_type.active,
+        'Document type is active.' if document.document_type and document.document_type.active else 'An active document type is required.',
+    )
+    add_check(
+        'actor_consent_checked',
+        'Actor consent permits internal intelligence processing',
+        consent_allows_internal_automation,
+        'Active actor consent permits internal document intelligence processing.' if consent_allows_internal_automation else 'Active actor consent must permit internal review or extraction-quality use before automation can be queued.',
+    )
+    add_check(
+        'no_active_automation_run',
+        'No queued or running automation run',
+        active_inflight_run is None,
+        'No active automation run is queued or running.' if not active_inflight_run else f'Automation run #{active_inflight_run.id} is already {active_inflight_run.status}.',
+    )
+
+    return {
+        'eligible': not blocking_reasons,
+        'checks': checks,
+        'blocking_reasons': blocking_reasons,
+        'current_version': version,
+        'active_consent_id': active_consent.id if active_consent else None,
+        'active_inflight_run': active_inflight_run,
+    }
+
+
+def create_document_automation_run(document, trigger_source='admin_manual', retry_of_run=None, notes=None):
+    eligibility = automation_eligibility_context(document)
+    if not eligibility['eligible']:
+        return None, eligibility
+
+    extraction_run = latest_document_extraction_run(document)
+    confidence_summary = automation_confidence_summary(document)
+    automation_run = DocumentAutomationRun(
+        actor_document_id=document.id,
+        actor_document_version_id=eligibility['current_version'].id if eligibility['current_version'] else None,
+        extraction_run_id=extraction_run.id if extraction_run else None,
+        retry_of_run_id=retry_of_run.id if retry_of_run else None,
+        job_type='document_intelligence',
+        trigger_source=trigger_source,
+        status='queued',
+        eligibility_checks_json=eligibility['checks'],
+        confidence_summary_json=confidence_summary,
+        notes=notes,
+        requested_by_user_id=current_user.id,
+        queued_at=datetime.utcnow(),
+    )
+    append_automation_event(
+        automation_run,
+        'automation_run_queued',
+        'Document intelligence automation run queued for internal processing.',
+        {
+            'actor_document_id': document.id,
+            'actor_document_version_id': automation_run.actor_document_version_id,
+            'retry_of_run_id': automation_run.retry_of_run_id,
+            'external_access_created': False,
+            'auto_published': False,
+        },
+    )
+    db.session.add(automation_run)
+    db.session.flush()
+    add_automation_audit(
+        automation_run,
+        'admin_document_automation_run_queued',
+        before_values=None,
+        after_values=automation_audit_values(automation_run),
+    )
+    return automation_run, eligibility
+
+
+def safe_automation_run_item(automation_run):
+    document = automation_run.actor_document
+    actor = document.market_actor if document else None
+    partner = document.partner_organization if document else None
+    confidence = automation_run.confidence_summary_json or {}
+    return {
+        'run': automation_run,
+        'document': document,
+        'document_label': f"Document #{document.id}" if document else 'Unknown document',
+        'document_type': document.document_type.name if document and document.document_type else 'Unknown type',
+        'actor_label': actor.public_id if actor else 'Unknown actor',
+        'actor_type': actor.actor_type if actor else None,
+        'partner_name': partner.name if partner else 'Unknown partner',
+        'confidence': confidence,
+        'latest_extraction_status': confidence.get('latest_extraction_status', 'missing'),
+        'document_intelligence_status': confidence.get('document_intelligence_status', 'not_started'),
+        'publish_controls': DocumentPublishControl.query.filter_by(actor_document_id=document.id).all() if document else [],
+    }
+
+
+def filtered_automation_runs():
+    selected_status = request.args.get('status', '').strip()
+    selected_document_type_id = request.args.get('document_type_id', '').strip()
+    selected_partner_organization_id = request.args.get('partner_organization_id', '').strip()
+    actor_filter = request.args.get('actor', '').strip().lower()
+    confidence_min = request.args.get('confidence_min', '').strip()
+    confidence_max = request.args.get('confidence_max', '').strip()
+    date_from = request.args.get('date_from', '').strip()
+    date_to = request.args.get('date_to', '').strip()
+    date_window = automation_date_filter_context()
+
+    query = DocumentAutomationRun.query.join(ActorDocument)
+    if selected_status in DOCUMENT_AUTOMATION_RUN_STATUSES:
+        query = query.filter(DocumentAutomationRun.status == selected_status)
+    else:
+        selected_status = ''
+    if selected_document_type_id.isdigit():
+        query = query.filter(ActorDocument.document_type_id == int(selected_document_type_id))
+    if selected_partner_organization_id.isdigit():
+        query = query.filter(ActorDocument.partner_organization_id == int(selected_partner_organization_id))
+    if date_window['cutoff']:
+        query = query.filter(DocumentAutomationRun.created_at >= date_window['cutoff'])
+    if date_from:
+        try:
+            query = query.filter(DocumentAutomationRun.created_at >= datetime.strptime(date_from, '%Y-%m-%d'))
+        except ValueError:
+            date_from = ''
+    if date_to:
+        try:
+            inclusive_end = datetime.strptime(date_to, '%Y-%m-%d') + timedelta(days=1)
+            query = query.filter(DocumentAutomationRun.created_at < inclusive_end)
+        except ValueError:
+            date_to = ''
+
+    runs = query.order_by(DocumentAutomationRun.created_at.desc(), DocumentAutomationRun.id.desc()).all()
+    items = [safe_automation_run_item(run) for run in runs]
+
+    if actor_filter:
+        items = [
+            item for item in items
+            if actor_filter in item['actor_label'].lower()
+            or (item['actor_type'] and actor_filter in item['actor_type'].lower())
+        ]
+
+    def parse_confidence(value):
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    min_value = parse_confidence(confidence_min)
+    max_value = parse_confidence(confidence_max)
+    if min_value is not None:
+        items = [
+            item for item in items
+            if item['confidence'].get('average_confidence') is not None
+            and item['confidence']['average_confidence'] >= min_value
+        ]
+    if max_value is not None:
+        items = [
+            item for item in items
+            if item['confidence'].get('average_confidence') is not None
+            and item['confidence']['average_confidence'] <= max_value
+        ]
+
+    return {
+        'run_items': items,
+        'selected_status': selected_status,
+        'selected_document_type_id': selected_document_type_id,
+        'selected_partner_organization_id': selected_partner_organization_id,
+        'selected_actor': actor_filter,
+        'selected_confidence_min': confidence_min,
+        'selected_confidence_max': confidence_max,
+        'selected_date_from': date_from,
+        'selected_date_to': date_to,
+        'date_window': date_window,
+    }
+
+
+def automation_dashboard_context():
+    recent_runs = (
+        DocumentAutomationRun.query
+        .order_by(DocumentAutomationRun.created_at.desc(), DocumentAutomationRun.id.desc())
+        .limit(12)
+        .all()
+    )
+    confidence_values = []
+    for run in DocumentAutomationRun.query.all():
+        summary = run.confidence_summary_json or {}
+        if summary.get('average_confidence') is not None:
+            confidence_values.append(summary['average_confidence'])
+    return {
+        'status_counts': automation_status_counts(),
+        'recent_run_items': [safe_automation_run_item(run) for run in recent_runs],
+        'queued_count': DocumentAutomationRun.query.filter_by(status='queued').count(),
+        'running_count': DocumentAutomationRun.query.filter_by(status='running').count(),
+        'needs_review_count': DocumentAutomationRun.query.filter_by(status='needs_review').count(),
+        'failed_count': DocumentAutomationRun.query.filter_by(status='failed').count(),
+        'average_confidence': round(sum(confidence_values) / len(confidence_values), 1) if confidence_values else None,
+    }
+
+
 @admin_bp.route('/')
 @login_required
 @admin_required
@@ -1582,6 +1980,9 @@ def dashboard():
     pending_commercial_requests = CommercialRequest.query.filter_by(status='pending').count()
     commercial_requests_ready_for_fulfilment = CommercialRequest.query.filter_by(status='approved_for_fulfilment').count()
     commercial_report_followups = pending_commercial_requests + active_due_diligence_requests
+    automation_attention_count = DocumentAutomationRun.query.filter(
+        DocumentAutomationRun.status.in_(['queued', 'running', 'needs_review', 'failed'])
+    ).count()
     
     recent_exports = ExportLog.query.order_by(ExportLog.exported_at.desc()).limit(10).all()
     
@@ -1596,7 +1997,164 @@ def dashboard():
                            pending_commercial_requests=pending_commercial_requests,
                            commercial_requests_ready_for_fulfilment=commercial_requests_ready_for_fulfilment,
                            commercial_report_followups=commercial_report_followups,
+                           automation_attention_count=automation_attention_count,
                            recent_exports=recent_exports)
+
+
+@admin_bp.route('/intelligence-automation')
+@login_required
+@admin_required
+def intelligence_automation_dashboard():
+    return render_template(
+        'admin/intelligence_automation.html',
+        status_labels=AUTOMATION_STATUS_LABELS,
+        **automation_dashboard_context(),
+    )
+
+
+@admin_bp.route('/intelligence-automation/runs')
+@login_required
+@admin_required
+def intelligence_automation_runs():
+    filtered_context = filtered_automation_runs()
+    return render_template(
+        'admin/intelligence_automation_runs.html',
+        statuses=DOCUMENT_AUTOMATION_RUN_STATUSES,
+        status_labels=AUTOMATION_STATUS_LABELS,
+        document_types=DocumentType.query.order_by(DocumentType.category, DocumentType.name).all(),
+        partner_organizations=PartnerOrganization.query.order_by(PartnerOrganization.name).all(),
+        **filtered_context,
+    )
+
+
+@admin_bp.route('/intelligence-automation/runs/<int:run_id>')
+@login_required
+@admin_required
+def intelligence_automation_run_detail(run_id):
+    automation_run = DocumentAutomationRun.query.get_or_404(run_id)
+    item = safe_automation_run_item(automation_run)
+    document = automation_run.actor_document
+    review_context = document_admin_review_context(document) if document else {}
+    audit_events = (
+        AuditLog.query.filter_by(entity_type='document_automation_run', entity_id=automation_run.id)
+        .order_by(AuditLog.created_at.desc(), AuditLog.id.desc())
+        .limit(30)
+        .all()
+    )
+    return render_template(
+        'admin/intelligence_automation_run_detail.html',
+        item=item,
+        automation_run=automation_run,
+        status_labels=AUTOMATION_STATUS_LABELS,
+        cancellable_statuses=AUTOMATION_CANCELLABLE_STATUSES,
+        retryable_statuses=AUTOMATION_RETRYABLE_STATUSES,
+        audit_events=audit_events,
+        review_context=review_context,
+    )
+
+
+@admin_bp.route('/intelligence-automation/runs/<int:run_id>/retry', methods=['POST'])
+@login_required
+@admin_required
+def intelligence_automation_run_retry(run_id):
+    automation_run = DocumentAutomationRun.query.get_or_404(run_id)
+    if automation_run.status not in AUTOMATION_RETRYABLE_STATUSES:
+        add_automation_audit(
+            automation_run,
+            'admin_document_automation_retry_blocked',
+            before_values=automation_audit_values(automation_run),
+            after_values={
+                **automation_audit_values(automation_run),
+                'retry_created': False,
+                'reason': f'Runs with status {automation_run.status} are not retryable.',
+            },
+        )
+        db.session.commit()
+        flash('Only failed, needs review, or cancelled automation runs can be retried.', 'error')
+        return redirect(url_for('admin.intelligence_automation_run_detail', run_id=automation_run.id))
+
+    append_automation_event(
+        automation_run,
+        'retry_requested',
+        'Admin requested a safe retry for this automation run.',
+        {'retry_created': True, 'auto_published': False},
+    )
+    new_run, eligibility = create_document_automation_run(
+        automation_run.actor_document,
+        trigger_source='admin_retry',
+        retry_of_run=automation_run,
+        notes=clean_admin_form_value('notes'),
+    )
+    if not new_run:
+        add_automation_audit(
+            automation_run,
+            'admin_document_automation_retry_blocked',
+            before_values=automation_audit_values(automation_run),
+            after_values={
+                **automation_audit_values(automation_run),
+                'retry_created': False,
+                'blocking_reasons': eligibility['blocking_reasons'],
+            },
+        )
+        db.session.commit()
+        flash('Retry was blocked because the document is not currently eligible for automation.', 'error')
+        return redirect(url_for('admin.intelligence_automation_run_detail', run_id=automation_run.id))
+
+    add_automation_audit(
+        automation_run,
+        'admin_document_automation_retry_requested',
+        before_values=automation_audit_values(automation_run),
+        after_values={
+            **automation_audit_values(automation_run),
+            'new_automation_run_id': new_run.id,
+            'retry_created': True,
+        },
+    )
+    db.session.commit()
+    flash(f'Retry queued as automation run #{new_run.id}. No external access or publishing was created.', 'success')
+    return redirect(url_for('admin.intelligence_automation_run_detail', run_id=new_run.id))
+
+
+@admin_bp.route('/intelligence-automation/runs/<int:run_id>/cancel', methods=['POST'])
+@login_required
+@admin_required
+def intelligence_automation_run_cancel(run_id):
+    automation_run = DocumentAutomationRun.query.get_or_404(run_id)
+    before_values = automation_audit_values(automation_run)
+    if automation_run.status not in AUTOMATION_CANCELLABLE_STATUSES:
+        add_automation_audit(
+            automation_run,
+            'admin_document_automation_cancel_blocked',
+            before_values=before_values,
+            after_values={
+                **before_values,
+                'cancelled': False,
+                'reason': f'Runs with status {automation_run.status} are not cancellable.',
+            },
+        )
+        db.session.commit()
+        flash('Only queued or running automation runs can be cancelled.', 'error')
+        return redirect(url_for('admin.intelligence_automation_run_detail', run_id=automation_run.id))
+
+    automation_run.status = 'cancelled'
+    automation_run.cancelled_by_user_id = current_user.id
+    automation_run.cancelled_at = datetime.utcnow()
+    automation_run.error_message = clean_admin_form_value('cancel_reason') or automation_run.error_message
+    append_automation_event(
+        automation_run,
+        'automation_run_cancelled',
+        'Admin cancelled the queued/running automation run.',
+        {'cancelled_by_user_id': current_user.id, 'auto_published': False},
+    )
+    add_automation_audit(
+        automation_run,
+        'admin_document_automation_run_cancelled',
+        before_values=before_values,
+        after_values=automation_audit_values(automation_run),
+    )
+    db.session.commit()
+    flash('Automation run cancelled. No extracted output was published.', 'success')
+    return redirect(url_for('admin.intelligence_automation_run_detail', run_id=automation_run.id))
 
 
 @admin_bp.route('/commercial-dashboard')
@@ -2326,6 +2884,41 @@ def document_review_decision(document_id):
 
     flash('Admin document review decision saved.', 'success')
     return redirect(url_for('admin.document_review_detail', document_id=document.id))
+
+
+@admin_bp.route('/documents/<int:document_id>/automation/run', methods=['POST'])
+@login_required
+@admin_required
+def document_automation_run(document_id):
+    document = ActorDocument.query.get_or_404(document_id)
+    automation_run, eligibility = create_document_automation_run(
+        document,
+        trigger_source='admin_manual',
+        notes=clean_admin_form_value('notes'),
+    )
+    if not automation_run:
+        add_admin_document_audit(
+            document,
+            'admin_document_automation_run_blocked',
+            before_values=None,
+            after_values={
+                'actor_document_id': document.id,
+                'actor_id': document.market_actor_id,
+                'partner_organization_id': document.partner_organization_id,
+                'eligibility_checks': eligibility['checks'],
+                'blocking_reasons': eligibility['blocking_reasons'],
+                'automation_run_created': False,
+                'auto_published': False,
+                'external_access_created': False,
+            },
+        )
+        db.session.commit()
+        flash('Automation run was blocked because the document is not currently eligible.', 'error')
+        return redirect(url_for('admin.document_review_detail', document_id=document.id))
+
+    db.session.commit()
+    flash(f'Document intelligence automation run #{automation_run.id} queued. No data was published.', 'success')
+    return redirect(url_for('admin.intelligence_automation_run_detail', run_id=automation_run.id))
 
 
 @admin_bp.route('/documents/<int:document_id>/redaction', methods=['GET', 'POST'])
