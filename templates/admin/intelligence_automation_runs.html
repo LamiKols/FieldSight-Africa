@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+
+{% block title %}Automation Runs - FieldSight Africa{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="flex items-center justify-between gap-4 mb-8">
+        <div>
+            <a href="{{ url_for('admin.intelligence_automation_dashboard') }}" class="text-primary hover:underline text-sm">&larr; Back to Automation Dashboard</a>
+            <h1 class="text-3xl font-bold text-gray-900 mt-3">Automation Runs</h1>
+            <p class="text-gray-600 mt-1">Safe document intelligence orchestration history.</p>
+        </div>
+        <a href="{{ url_for('admin.document_review_queue') }}" class="border border-primary text-primary px-5 py-2 rounded-lg hover:bg-primary hover:text-white transition">Document Queue</a>
+    </div>
+
+    <form method="GET" class="bg-white rounded-xl shadow-sm border p-5 mb-6">
+        <div class="grid md:grid-cols-3 lg:grid-cols-9 gap-4">
+            <div>
+                <label for="status" class="block text-xs font-medium text-gray-500 uppercase mb-1">Status</label>
+                <select name="status" id="status" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                    <option value="">Any</option>
+                    {% for status in statuses %}
+                    <option value="{{ status }}" {% if selected_status == status %}selected{% endif %}>{{ status_labels.get(status, status|replace('_', ' ')|title) }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label for="document_type_id" class="block text-xs font-medium text-gray-500 uppercase mb-1">Type</label>
+                <select name="document_type_id" id="document_type_id" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                    <option value="">Any</option>
+                    {% for document_type in document_types %}
+                    <option value="{{ document_type.id }}" {% if selected_document_type_id == document_type.id|string %}selected{% endif %}>{{ document_type.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label for="partner_organization_id" class="block text-xs font-medium text-gray-500 uppercase mb-1">Partner</label>
+                <select name="partner_organization_id" id="partner_organization_id" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                    <option value="">Any</option>
+                    {% for organization in partner_organizations %}
+                    <option value="{{ organization.id }}" {% if selected_partner_organization_id == organization.id|string %}selected{% endif %}>{{ organization.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label for="actor" class="block text-xs font-medium text-gray-500 uppercase mb-1">Actor</label>
+                <input type="text" name="actor" id="actor" value="{{ selected_actor }}" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="Public ID">
+            </div>
+            <div>
+                <label for="date_window" class="block text-xs font-medium text-gray-500 uppercase mb-1">Window</label>
+                <select name="date_window" id="date_window" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                    {% for option in date_window.options %}
+                    <option value="{{ option.key }}" {% if date_window.key == option.key %}selected{% endif %}>{{ option.label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label for="date_from" class="block text-xs font-medium text-gray-500 uppercase mb-1">From</label>
+                <input type="date" name="date_from" id="date_from" value="{{ selected_date_from }}" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+            </div>
+            <div>
+                <label for="date_to" class="block text-xs font-medium text-gray-500 uppercase mb-1">To</label>
+                <input type="date" name="date_to" id="date_to" value="{{ selected_date_to }}" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+            </div>
+            <div>
+                <label for="confidence_min" class="block text-xs font-medium text-gray-500 uppercase mb-1">Min Conf.</label>
+                <input type="number" min="0" max="100" step="1" name="confidence_min" id="confidence_min" value="{{ selected_confidence_min }}" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+            </div>
+            <div>
+                <label for="confidence_max" class="block text-xs font-medium text-gray-500 uppercase mb-1">Max Conf.</label>
+                <input type="number" min="0" max="100" step="1" name="confidence_max" id="confidence_max" value="{{ selected_confidence_max }}" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+            </div>
+        </div>
+        <div class="mt-4 flex justify-end gap-3">
+            <a href="{{ url_for('admin.intelligence_automation_runs') }}" class="bg-white border border-gray-300 text-gray-700 px-5 py-2 rounded-lg hover:bg-gray-50 transition">Reset</a>
+            <button type="submit" class="bg-primary text-white px-5 py-2 rounded-lg hover:bg-secondary transition">Filter</button>
+        </div>
+    </form>
+
+    <div class="bg-white rounded-xl shadow-sm border overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="w-full">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Run</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Document</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actor</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Partner</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Confidence</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Review</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Created</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Action</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y">
+                    {% for item in run_items %}
+                    <tr class="hover:bg-gray-50">
+                        <td class="px-5 py-4 text-sm text-gray-900">#{{ item.run.id }}</td>
+                        <td class="px-5 py-4 text-sm text-gray-700">
+                            <p>{{ item.document_label }}</p>
+                            <p class="text-xs text-gray-500">{{ item.document_type }}</p>
+                        </td>
+                        <td class="px-5 py-4 text-sm text-gray-700">
+                            <p>{{ item.actor_label }}</p>
+                            <p class="text-xs text-gray-500">{{ item.actor_type|replace('_', ' ')|title if item.actor_type else '' }}</p>
+                        </td>
+                        <td class="px-5 py-4 text-sm text-gray-700">{{ item.partner_name }}</td>
+                        <td class="px-5 py-4 text-sm text-gray-700">{{ status_labels.get(item.run.status, item.run.status|replace('_', ' ')|title) }}</td>
+                        <td class="px-5 py-4 text-sm text-gray-700">
+                            <p>{{ item.confidence.average_confidence if item.confidence.average_confidence is not none else 'n/a' }}</p>
+                            <p class="text-xs text-gray-500">Quality {{ item.confidence.quality_score if item.confidence.quality_score is not none else 'n/a' }}</p>
+                        </td>
+                        <td class="px-5 py-4 text-sm text-gray-700">
+                            <p>{{ item.latest_extraction_status|replace('_', ' ')|title }}</p>
+                            <p class="text-xs text-gray-500">{{ item.document_intelligence_status|replace('_', ' ')|title }}</p>
+                        </td>
+                        <td class="px-5 py-4 text-sm text-gray-500">{{ item.run.created_at.strftime('%Y-%m-%d') if item.run.created_at else '' }}</td>
+                        <td class="px-5 py-4 text-sm">
+                            <a href="{{ url_for('admin.intelligence_automation_run_detail', run_id=item.run.id) }}" class="text-primary hover:underline">Open</a>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="9" class="px-6 py-8 text-center text-gray-500">No automation runs match the current filters.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

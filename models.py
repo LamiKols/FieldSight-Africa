@@ -170,6 +170,15 @@ DOCUMENT_ACCESS_FULFILMENT_ACTION_TYPES = [
     "manual_note",
 ]
 
+DOCUMENT_AUTOMATION_RUN_STATUSES = [
+    "queued",
+    "running",
+    "completed",
+    "failed",
+    "needs_review",
+    "cancelled",
+]
+
 COMMERCIAL_REQUEST_TYPES = [
     "live_intelligence",
     "api_access",
@@ -1003,6 +1012,37 @@ class DocumentFieldReconciliation(TimestampMixin, db.Model):
     actor_document = db.relationship('ActorDocument', backref='field_reconciliations')
     extraction_run = db.relationship('DocumentExtractionRun', backref='field_reconciliations')
     reviewed_by_user = db.relationship('User', backref='document_field_reconciliations')
+
+
+class DocumentAutomationRun(TimestampMixin, db.Model):
+    __tablename__ = 'document_automation_runs'
+
+    id = db.Column(db.Integer, primary_key=True)
+    actor_document_id = db.Column(db.Integer, db.ForeignKey('actor_documents.id'), nullable=False)
+    actor_document_version_id = db.Column(db.Integer, db.ForeignKey('actor_document_versions.id'))
+    extraction_run_id = db.Column(db.Integer, db.ForeignKey('document_extraction_runs.id'))
+    retry_of_run_id = db.Column(db.Integer, db.ForeignKey('document_automation_runs.id'))
+    job_type = db.Column(db.String(80), default='document_intelligence', nullable=False)
+    trigger_source = db.Column(db.String(80), default='admin_manual', nullable=False)
+    status = db.Column(db.String(50), default='queued', nullable=False)
+    eligibility_checks_json = db.Column(db.JSON, default=list)
+    confidence_summary_json = db.Column(db.JSON, default=dict)
+    event_log_json = db.Column(db.JSON, default=list)
+    notes = db.Column(db.Text)
+    error_message = db.Column(db.Text)
+    queued_at = db.Column(db.DateTime, default=datetime.utcnow)
+    started_at = db.Column(db.DateTime)
+    completed_at = db.Column(db.DateTime)
+    cancelled_at = db.Column(db.DateTime)
+    requested_by_user_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+    cancelled_by_user_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+
+    actor_document = db.relationship('ActorDocument', backref='automation_runs')
+    actor_document_version = db.relationship('ActorDocumentVersion', backref='automation_runs')
+    extraction_run = db.relationship('DocumentExtractionRun', backref='automation_runs')
+    retry_of_run = db.relationship('DocumentAutomationRun', remote_side=[id], backref='retry_runs')
+    requested_by_user = db.relationship('User', foreign_keys=[requested_by_user_id], backref='requested_document_automation_runs')
+    cancelled_by_user = db.relationship('User', foreign_keys=[cancelled_by_user_id], backref='cancelled_document_automation_runs')
 
 
 class DocumentReview(TimestampMixin, db.Model):

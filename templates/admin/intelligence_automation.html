@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+
+{% block title %}Intelligence Automation - FieldSight Africa{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4 mb-8">
+        <div>
+            <a href="{{ url_for('admin.dashboard') }}" class="text-primary hover:underline text-sm">&larr; Back to Admin Dashboard</a>
+            <h1 class="text-3xl font-bold text-gray-900 mt-3">Intelligence Automation</h1>
+            <p class="text-gray-600 mt-1">Document intelligence queue, confidence health, and admin oversight.</p>
+        </div>
+        <a href="{{ url_for('admin.intelligence_automation_runs') }}" class="bg-primary text-white px-5 py-2 rounded-lg hover:bg-secondary transition">View Runs</a>
+    </div>
+
+    <div class="rounded-xl bg-blue-50 border border-blue-200 p-5 mb-6 text-sm text-blue-800">
+        Automation records internal processing state only. Extraction, human review, redaction, publish readiness, consent, and entitlement gates remain separate.
+    </div>
+
+    <div class="grid md:grid-cols-5 gap-6 mb-8">
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <p class="text-sm text-gray-500">Queued</p>
+            <p class="text-3xl font-bold text-gray-900 mt-2">{{ queued_count }}</p>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <p class="text-sm text-gray-500">Running</p>
+            <p class="text-3xl font-bold text-gray-900 mt-2">{{ running_count }}</p>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <p class="text-sm text-gray-500">Needs Review</p>
+            <p class="text-3xl font-bold text-amber-600 mt-2">{{ needs_review_count }}</p>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <p class="text-sm text-gray-500">Failed</p>
+            <p class="text-3xl font-bold text-red-600 mt-2">{{ failed_count }}</p>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <p class="text-sm text-gray-500">Avg Confidence</p>
+            <p class="text-3xl font-bold text-primary mt-2">{{ average_confidence if average_confidence is not none else 'n/a' }}</p>
+        </div>
+    </div>
+
+    <div class="grid lg:grid-cols-3 gap-6 mb-8">
+        <section class="bg-white rounded-xl shadow-sm border p-6">
+            <h2 class="text-xl font-semibold text-gray-900 mb-5">Status Mix</h2>
+            <div class="space-y-3">
+                {% for status, count in status_counts.items() %}
+                <div class="flex items-center justify-between gap-4 text-sm">
+                    <span class="text-gray-700">{{ status_labels.get(status, status|replace('_', ' ')|title) }}</span>
+                    <span class="font-semibold text-gray-900">{{ count }}</span>
+                </div>
+                {% endfor %}
+            </div>
+        </section>
+
+        <section class="lg:col-span-2 bg-white rounded-xl shadow-sm border overflow-hidden">
+            <div class="px-6 py-4 border-b flex items-center justify-between gap-4">
+                <h2 class="text-xl font-semibold text-gray-900">Recent Runs</h2>
+                <a href="{{ url_for('admin.intelligence_automation_runs') }}" class="text-primary hover:underline text-sm">Open queue</a>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Run</th>
+                            <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Document</th>
+                            <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                            <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Confidence</th>
+                            <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y">
+                        {% for item in recent_run_items %}
+                        <tr>
+                            <td class="px-5 py-4 text-sm text-gray-900">#{{ item.run.id }}</td>
+                            <td class="px-5 py-4 text-sm text-gray-700">
+                                <p>{{ item.document_label }}</p>
+                                <p class="text-xs text-gray-500">{{ item.document_type }} | {{ item.actor_label }}</p>
+                            </td>
+                            <td class="px-5 py-4 text-sm text-gray-700">{{ status_labels.get(item.run.status, item.run.status|replace('_', ' ')|title) }}</td>
+                            <td class="px-5 py-4 text-sm text-gray-700">{{ item.confidence.average_confidence if item.confidence.average_confidence is not none else 'n/a' }}</td>
+                            <td class="px-5 py-4 text-sm">
+                                <a href="{{ url_for('admin.intelligence_automation_run_detail', run_id=item.run.id) }}" class="text-primary hover:underline">Review</a>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="5" class="px-6 py-8 text-center text-gray-500">No automation runs have been queued.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </div>
+</div>
+{% endblock %}
