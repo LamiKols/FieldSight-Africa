@@ -14,6 +14,11 @@
             {% if item.document %}
             <a href="{{ url_for('admin.document_review_detail', document_id=item.document.id) }}" class="border border-gray-300 text-gray-700 px-5 py-2 rounded-lg hover:border-primary hover:text-primary transition">Document Review</a>
             {% endif %}
+            {% if automation_run.status == 'queued' %}
+            <form method="POST" action="{{ url_for('admin.intelligence_automation_run_process', run_id=automation_run.id) }}">
+                <button type="submit" class="bg-primary text-white px-5 py-2 rounded-lg hover:bg-secondary transition">Process</button>
+            </form>
+            {% endif %}
             {% if automation_run.status in retryable_statuses %}
             <form method="POST" action="{{ url_for('admin.intelligence_automation_run_retry', run_id=automation_run.id) }}">
                 <button type="submit" class="bg-primary text-white px-5 py-2 rounded-lg hover:bg-secondary transition">Retry</button>
