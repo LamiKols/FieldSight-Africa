@@ -78,6 +78,12 @@ from document_automation import (
     process_queued_runs,
     recover_stale_runs,
 )
+from automation_scheduler import (
+    execute_scheduled_processing,
+    get_or_create_schedule_config,
+    operational_monitoring_summary,
+    update_schedule_config,
+)
 
 admin_bp = Blueprint('admin', __name__, url_prefix='/admin')
 
@@ -1911,6 +1917,9 @@ def automation_dashboard_context():
     now = datetime.utcnow()
     stale_cutoff = now - timedelta(minutes=DEFAULT_STALE_MINUTES)
     running_runs = DocumentAutomationRun.query.filter_by(status='running').all()
+    schedule_config = get_or_create_schedule_config()
+    db.session.commit()
+    monitoring = operational_monitoring_summary(schedule_config)
     recent_runs = (
         DocumentAutomationRun.query
         .order_by(DocumentAutomationRun.created_at.desc(), DocumentAutomationRun.id.desc())
@@ -1942,6 +1951,11 @@ def automation_dashboard_context():
         'default_batch_limit': DEFAULT_BATCH_LIMIT,
         'default_stale_minutes': DEFAULT_STALE_MINUTES,
         'average_confidence': round(sum(confidence_values) / len(confidence_values), 1) if confidence_values else None,
+        'schedule_config': schedule_config,
+        'scheduler_metrics': monitoring['metrics'],
+        'scheduler_alerts': monitoring['alerts'],
+        'scheduler_repeated_failures': monitoring['repeated_failures'],
+        'recent_scheduled_logs': monitoring['recent_logs'],
     }
 
 
@@ -1994,6 +2008,61 @@ def intelligence_automation_dashboard():
         status_labels=AUTOMATION_STATUS_LABELS,
         **automation_dashboard_context(),
     )
+
+
+@admin_bp.route('/intelligence-automation/schedule')
+@login_required
+@admin_required
+def intelligence_automation_schedule():
+    config = get_or_create_schedule_config()
+    db.session.commit()
+    monitoring = operational_monitoring_summary(config)
+    return render_template(
+        'admin/intelligence_automation_schedule.html',
+        schedule_config=config,
+        scheduler_metrics=monitoring['metrics'],
+        scheduler_alerts=monitoring['alerts'],
+        repeated_failures=monitoring['repeated_failures'],
+        recent_scheduled_logs=monitoring['recent_logs'],
+    )
+
+
+@admin_bp.route('/intelligence-automation/schedule/update', methods=['POST'])
+@login_required
+@admin_required
+def intelligence_automation_schedule_update():
+    config = get_or_create_schedule_config()
+    update_schedule_config(
+        config,
+        enabled=request.form.get('enabled') == 'true',
+        batch_limit=request.form.get('batch_limit'),
+        stale_run_threshold_minutes=request.form.get('stale_run_threshold_minutes'),
+        stale_run_action=clean_admin_form_value('stale_run_action'),
+        processing_frequency_label=clean_admin_form_value('processing_frequency_label'),
+        notes=clean_admin_form_value('notes'),
+        actor_user_id=current_user.id,
+    )
+    flash('Automation schedule settings updated safely.', 'success')
+    return redirect(url_for('admin.intelligence_automation_schedule'))
+
+
+@admin_bp.route('/intelligence-automation/schedule/run-now', methods=['POST'])
+@login_required
+@admin_required
+def intelligence_automation_schedule_run_now():
+    result = execute_scheduled_processing(
+        trigger_source='admin_run_now',
+        actor_user_id=current_user.id,
+    )
+    if result['status'] == 'skipped_disabled':
+        flash('Scheduled processing is disabled. No queued runs were processed.', 'warning')
+    elif result['status'] == 'completed':
+        flash('Scheduled processing completed. No data was published.', 'success')
+    elif result['status'] == 'completed_with_attention':
+        flash('Scheduled processing completed with runs requiring attention.', 'warning')
+    else:
+        flash('Scheduled processing failed safely.', 'error')
+    return redirect(url_for('admin.intelligence_automation_schedule'))
 
 
 @admin_bp.route('/intelligence-automation/runs')

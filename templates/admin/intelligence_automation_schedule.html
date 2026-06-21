@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+
+{% block title %}Automation Schedule - FieldSight Africa{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4 mb-8">
+        <div>
+            <a href="{{ url_for('admin.intelligence_automation_dashboard') }}" class="text-primary hover:underline text-sm">&larr; Back to Automation Dashboard</a>
+            <h1 class="text-3xl font-bold text-gray-900 mt-3">Automation Schedule</h1>
+            <p class="text-gray-600 mt-1">Controlled processing settings, operational monitoring, and safe run history.</p>
+        </div>
+        <form method="POST" action="{{ url_for('admin.intelligence_automation_schedule_run_now') }}">
+            <button type="submit" class="bg-primary text-white px-5 py-2 rounded-lg hover:bg-secondary transition">Run Now</button>
+        </form>
+    </div>
+
+    <div class="rounded-xl border p-5 mb-6 text-sm {{ 'bg-emerald-50 border-emerald-200 text-emerald-800' if schedule_config.enabled else 'bg-amber-50 border-amber-200 text-amber-800' }}">
+        Scheduled processing is {{ 'enabled' if schedule_config.enabled else 'disabled' }}. Run Now respects this setting and does not process queued jobs while disabled.
+    </div>
+
+    <div class="grid lg:grid-cols-3 gap-6 mb-8">
+        <form method="POST" action="{{ url_for('admin.intelligence_automation_schedule_update') }}" class="lg:col-span-2 bg-white rounded-xl shadow-sm border p-6">
+            <h2 class="text-xl font-semibold text-gray-900 mb-5">Schedule Settings</h2>
+            <div class="grid md:grid-cols-2 gap-5">
+                <div>
+                    <label for="enabled" class="block text-sm font-medium text-gray-700 mb-1">Scheduled Processing</label>
+                    <select name="enabled" id="enabled" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                        <option value="false" {% if not schedule_config.enabled %}selected{% endif %}>Disabled</option>
+                        <option value="true" {% if schedule_config.enabled %}selected{% endif %}>Enabled</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="processing_frequency_label" class="block text-sm font-medium text-gray-700 mb-1">Frequency Label</label>
+                    <input type="text" name="processing_frequency_label" id="processing_frequency_label" maxlength="120" value="{{ schedule_config.processing_frequency_label or '' }}" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                </div>
+                <div>
+                    <label for="batch_limit" class="block text-sm font-medium text-gray-700 mb-1">Batch Limit</label>
+                    <input type="number" min="1" max="100" name="batch_limit" id="batch_limit" value="{{ schedule_config.batch_limit }}" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                </div>
+                <div>
+                    <label for="stale_run_threshold_minutes" class="block text-sm font-medium text-gray-700 mb-1">Stale Threshold Minutes</label>
+                    <input type="number" min="1" max="1440" name="stale_run_threshold_minutes" id="stale_run_threshold_minutes" value="{{ schedule_config.stale_run_threshold_minutes }}" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                </div>
+                <div>
+                    <label for="stale_run_action" class="block text-sm font-medium text-gray-700 mb-1">Stale Run Action</label>
+                    <select name="stale_run_action" id="stale_run_action" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                        <option value="requeue" {% if schedule_config.stale_run_action == 'requeue' %}selected{% endif %}>Requeue</option>
+                        <option value="fail" {% if schedule_config.stale_run_action == 'fail' %}selected{% endif %}>Mark Failed</option>
+                    </select>
+                </div>
+                <div class="md:col-span-2">
+                    <label for="notes" class="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+                    <textarea name="notes" id="notes" rows="4" maxlength="2000" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">{{ schedule_config.notes or '' }}</textarea>
+                </div>
+            </div>
+            <div class="mt-5 flex justify-end">
+                <button type="submit" class="bg-primary text-white px-5 py-2 rounded-lg hover:bg-secondary transition">Save Schedule</button>
+            </div>
+        </form>
+
+        <section class="bg-white rounded-xl shadow-sm border p-6">
+            <h2 class="text-xl font-semibold text-gray-900 mb-5">Last Scheduled Run</h2>
+            <dl class="space-y-3 text-sm">
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Status</dt><dd class="font-medium text-gray-900">{{ schedule_config.last_run_status|replace('_', ' ')|title if schedule_config.last_run_status else 'Not Run' }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Completed</dt><dd class="font-medium text-gray-900 text-right">{{ schedule_config.last_run_at.strftime('%Y-%m-%d %H:%M') if schedule_config.last_run_at else 'Not Run' }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Frequency</dt><dd class="font-medium text-gray-900 text-right">{{ schedule_config.processing_frequency_label or 'Manual' }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Updated By</dt><dd class="font-medium text-gray-900 text-right">{{ schedule_config.updated_by_user.email if schedule_config.updated_by_user else 'System' }}</dd></div>
+            </dl>
+        </section>
+    </div>
+
+    <div class="grid md:grid-cols-6 gap-4 mb-8">
+        <div class="bg-white rounded-xl shadow-sm border p-5"><p class="text-sm text-gray-500">Queued</p><p class="text-2xl font-bold text-gray-900 mt-2">{{ scheduler_metrics.queued_count }}</p></div>
+        <div class="bg-white rounded-xl shadow-sm border p-5"><p class="text-sm text-gray-500">Running</p><p class="text-2xl font-bold text-gray-900 mt-2">{{ scheduler_metrics.running_count }}</p></div>
+        <div class="bg-white rounded-xl shadow-sm border p-5"><p class="text-sm text-gray-500">Completed 24h</p><p class="text-2xl font-bold text-emerald-700 mt-2">{{ scheduler_metrics.completed_24h }}</p></div>
+        <div class="bg-white rounded-xl shadow-sm border p-5"><p class="text-sm text-gray-500">Failed 24h</p><p class="text-2xl font-bold text-red-700 mt-2">{{ scheduler_metrics.failed_24h }}</p></div>
+        <div class="bg-white rounded-xl shadow-sm border p-5"><p class="text-sm text-gray-500">Stale</p><p class="text-2xl font-bold text-amber-700 mt-2">{{ scheduler_metrics.stale_running_count }}</p></div>
+        <div class="bg-white rounded-xl shadow-sm border p-5"><p class="text-sm text-gray-500">Needs Review</p><p class="text-2xl font-bold text-amber-700 mt-2">{{ scheduler_metrics.needs_review_count }}</p></div>
+    </div>
+
+    <section class="bg-white rounded-xl shadow-sm border p-6 mb-8">
+        <h2 class="text-xl font-semibold text-gray-900 mb-5">Alert Summary</h2>
+        <div class="grid md:grid-cols-5 gap-4">
+            {% for alert in scheduler_alerts %}
+            <div class="rounded-lg border p-4 {{ 'border-red-200 bg-red-50' if alert.severity == 'critical' else 'border-amber-200 bg-amber-50' if alert.severity == 'warning' else 'border-gray-200 bg-gray-50' }}">
+                <div class="flex items-center justify-between gap-3"><p class="text-sm font-medium text-gray-900">{{ alert.label }}</p><span class="text-xl font-bold text-gray-900">{{ alert.count }}</span></div>
+                <p class="text-xs text-gray-600 mt-2">{{ alert.message }}</p>
+            </div>
+            {% endfor %}
+        </div>
+        {% if repeated_failures %}
+        <div class="mt-5 pt-5 border-t">
+            <h3 class="text-sm font-medium text-gray-700 mb-3">Repeated Failure Documents</h3>
+            <div class="flex flex-wrap gap-2">
+                {% for item in repeated_failures %}
+                <span class="text-xs rounded-full border border-red-200 bg-red-50 text-red-700 px-3 py-1">Document #{{ item.document_id }}: {{ item.failure_count }} failures</span>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+    </section>
+
+    <section class="bg-white rounded-xl shadow-sm border overflow-hidden">
+        <div class="px-6 py-4 border-b"><h2 class="text-xl font-semibold text-gray-900">Scheduled Run Logs</h2></div>
+        <div class="overflow-x-auto">
+            <table class="w-full">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Log</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Trigger</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Queue</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Processed</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Attention</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Started</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y">
+                    {% for log in recent_scheduled_logs %}
+                    <tr>
+                        <td class="px-5 py-4 text-sm text-gray-900">#{{ log.id }}</td>
+                        <td class="px-5 py-4 text-sm text-gray-700">{{ log.trigger_source|replace('_', ' ')|title }}</td>
+                        <td class="px-5 py-4 text-sm text-gray-700">{{ log.status|replace('_', ' ')|title }}</td>
+                        <td class="px-5 py-4 text-sm text-gray-700">{{ log.queue_count_before }}</td>
+                        <td class="px-5 py-4 text-sm text-gray-700">{{ log.processed_count }}</td>
+                        <td class="px-5 py-4 text-sm text-gray-700">{{ log.needs_review_count + log.failed_count }}</td>
+                        <td class="px-5 py-4 text-sm text-gray-500">{{ log.started_at.strftime('%Y-%m-%d %H:%M') if log.started_at else '' }}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="7" class="px-6 py-8 text-center text-gray-500">No scheduled processing logs recorded.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+</div>
+{% endblock %}
