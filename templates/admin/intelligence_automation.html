@@ -12,6 +12,7 @@
         </div>
         <div class="flex flex-wrap gap-3">
             <a href="{{ url_for('admin.intelligence_automation_schedule') }}" class="border border-primary text-primary px-5 py-2 rounded-lg hover:bg-primary hover:text-white transition">Schedule</a>
+            <a href="{{ url_for('admin.intelligence_insights') }}" class="border border-primary text-primary px-5 py-2 rounded-lg hover:bg-primary hover:text-white transition">Insight Review</a>
             <a href="{{ url_for('admin.intelligence_automation_runs') }}" class="bg-primary text-white px-5 py-2 rounded-lg hover:bg-secondary transition">View Runs</a>
         </div>
     </div>
@@ -75,6 +76,16 @@
             <p class="text-3xl font-bold text-primary mt-2">{{ average_confidence if average_confidence is not none else 'n/a' }}</p>
         </div>
     </div>
+
+    <section class="bg-white rounded-xl shadow-sm border p-6 mb-8">
+        <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+            <div>
+                <h2 class="text-xl font-semibold text-gray-900">Insight Review</h2>
+                <p class="text-sm text-gray-500 mt-1">{{ generated_insight_count }} generated or in-review insight(s); {{ approved_insight_count }} approved internal insight(s).</p>
+            </div>
+            <a href="{{ url_for('admin.intelligence_insights') }}" class="text-primary hover:underline text-sm">Open insight queue</a>
+        </div>
+    </section>
 
     <section class="bg-white rounded-xl shadow-sm border p-6 mb-8">
         <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 mb-5">
