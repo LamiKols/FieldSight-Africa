@@ -35,6 +35,9 @@ from models import (
     DOCUMENT_PUBLISH_CONTROL_STATUSES,
     DOCUMENT_PUBLISH_TARGETS,
     DOCUMENT_REDACTION_STATUSES,
+    INTELLIGENCE_INSIGHT_PUBLISHING_CANDIDATE_STATUSES,
+    INTELLIGENCE_INSIGHT_STATUSES,
+    IntelligenceInsight,
     MarketActor,
     PartnerOrganization,
     db,
@@ -83,6 +86,12 @@ from automation_scheduler import (
     get_or_create_schedule_config,
     operational_monitoring_summary,
     update_schedule_config,
+)
+from intelligence_insights import (
+    active_insight_for_run,
+    generate_intelligence_insight,
+    generation_eligibility,
+    update_intelligence_insight_review,
 )
 
 admin_bp = Blueprint('admin', __name__, url_prefix='/admin')
@@ -333,6 +342,22 @@ AUTOMATION_DATE_FILTERS = {
 }
 
 AUTOMATION_DEFAULT_DATE_FILTER = '30d'
+
+INTELLIGENCE_INSIGHT_STATUS_LABELS = {
+    'draft': 'Draft',
+    'generated': 'Generated',
+    'in_review': 'In Review',
+    'approved': 'Approved',
+    'rejected': 'Rejected',
+    'archived': 'Archived',
+}
+
+INTELLIGENCE_INSIGHT_PUBLISHING_LABELS = {
+    'not_candidate': 'Not Candidate',
+    'candidate_pending_review': 'Candidate Pending Review',
+    'approved_candidate': 'Approved Candidate',
+    'blocked': 'Blocked',
+}
 
 
 def admin_required(f):
@@ -1834,6 +1859,43 @@ def safe_automation_run_item(automation_run):
     }
 
 
+def safe_intelligence_insight_item(insight):
+    document = insight.actor_document
+    actor = document.market_actor if document else None
+    partner = document.partner_organization if document else None
+    safe_summary = insight.safe_summary_json or {}
+    return {
+        'insight': insight,
+        'document': document,
+        'automation_run': insight.automation_run,
+        'document_label': f"Document #{document.id}" if document else 'Unknown document',
+        'document_type': safe_summary.get('document_type') or (document.document_type.name if document and document.document_type else 'Unknown type'),
+        'actor_label': safe_summary.get('actor_public_id') or (actor.public_id if actor else 'Unknown actor'),
+        'partner_name': partner.name if partner else 'Unknown partner',
+        'safe_summary': safe_summary,
+        'key_findings': insight.key_findings_json or [],
+        'governance_flags': insight.governance_flags_json or [],
+    }
+
+
+def filtered_intelligence_insights():
+    selected_status = request.args.get('status', '').strip()
+    query = IntelligenceInsight.query
+    if selected_status in INTELLIGENCE_INSIGHT_STATUSES:
+        query = query.filter_by(status=selected_status)
+    else:
+        selected_status = ''
+    insights = (
+        query
+        .order_by(IntelligenceInsight.created_at.desc(), IntelligenceInsight.id.desc())
+        .all()
+    )
+    return {
+        'insight_items': [safe_intelligence_insight_item(insight) for insight in insights],
+        'selected_status': selected_status,
+    }
+
+
 def filtered_automation_runs():
     selected_status = request.args.get('status', '').strip()
     selected_document_type_id = request.args.get('document_type_id', '').strip()
@@ -1956,6 +2018,10 @@ def automation_dashboard_context():
         'scheduler_alerts': monitoring['alerts'],
         'scheduler_repeated_failures': monitoring['repeated_failures'],
         'recent_scheduled_logs': monitoring['recent_logs'],
+        'generated_insight_count': IntelligenceInsight.query.filter(
+            IntelligenceInsight.status.in_(['generated', 'in_review'])
+        ).count(),
+        'approved_insight_count': IntelligenceInsight.query.filter_by(status='approved').count(),
     }
 
 
@@ -2065,6 +2131,63 @@ def intelligence_automation_schedule_run_now():
     return redirect(url_for('admin.intelligence_automation_schedule'))
 
 
+@admin_bp.route('/intelligence-insights')
+@login_required
+@admin_required
+def intelligence_insights():
+    return render_template(
+        'admin/intelligence_insights.html',
+        statuses=INTELLIGENCE_INSIGHT_STATUSES,
+        status_labels=INTELLIGENCE_INSIGHT_STATUS_LABELS,
+        publishing_labels=INTELLIGENCE_INSIGHT_PUBLISHING_LABELS,
+        **filtered_intelligence_insights(),
+    )
+
+
+@admin_bp.route('/intelligence-insights/<int:insight_id>')
+@login_required
+@admin_required
+def intelligence_insight_detail(insight_id):
+    insight = IntelligenceInsight.query.get_or_404(insight_id)
+    audit_events = (
+        AuditLog.query.filter_by(entity_type='intelligence_insight', entity_id=insight.id)
+        .order_by(AuditLog.created_at.desc(), AuditLog.id.desc())
+        .limit(30)
+        .all()
+    )
+    return render_template(
+        'admin/intelligence_insight_detail.html',
+        item=safe_intelligence_insight_item(insight),
+        insight=insight,
+        status_labels=INTELLIGENCE_INSIGHT_STATUS_LABELS,
+        publishing_labels=INTELLIGENCE_INSIGHT_PUBLISHING_LABELS,
+        publishing_statuses=INTELLIGENCE_INSIGHT_PUBLISHING_CANDIDATE_STATUSES,
+        audit_events=audit_events,
+    )
+
+
+@admin_bp.route('/intelligence-insights/<int:insight_id>/review', methods=['POST'])
+@login_required
+@admin_required
+def intelligence_insight_review(insight_id):
+    insight = IntelligenceInsight.query.get_or_404(insight_id)
+    success, message = update_intelligence_insight_review(
+        insight,
+        clean_admin_form_value('review_action'),
+        actor_user_id=current_user.id,
+        title=clean_admin_form_value('title'),
+        summary=clean_admin_form_value('summary'),
+        review_notes=clean_admin_form_value('review_notes'),
+        publishing_candidate_status=clean_admin_form_value('publishing_candidate_status'),
+    )
+    if not success:
+        flash(message, 'error')
+    else:
+        db.session.commit()
+        flash(message + ' No data was published.', 'success')
+    return redirect(url_for('admin.intelligence_insight_detail', insight_id=insight.id))
+
+
 @admin_bp.route('/intelligence-automation/runs')
 @login_required
 @admin_required
@@ -2088,6 +2211,13 @@ def intelligence_automation_run_detail(run_id):
     item = safe_automation_run_item(automation_run)
     document = automation_run.actor_document
     review_context = document_admin_review_context(document) if document else {}
+    insights = (
+        IntelligenceInsight.query.filter_by(automation_run_id=automation_run.id)
+        .order_by(IntelligenceInsight.created_at.desc(), IntelligenceInsight.id.desc())
+        .all()
+    )
+    insight_generation_allowed, insight_generation_message = generation_eligibility(automation_run)
+    active_insight = active_insight_for_run(automation_run)
     audit_events = (
         AuditLog.query.filter_by(entity_type='document_automation_run', entity_id=automation_run.id)
         .order_by(AuditLog.created_at.desc(), AuditLog.id.desc())
@@ -2101,9 +2231,33 @@ def intelligence_automation_run_detail(run_id):
         status_labels=AUTOMATION_STATUS_LABELS,
         cancellable_statuses=AUTOMATION_CANCELLABLE_STATUSES,
         retryable_statuses=AUTOMATION_RETRYABLE_STATUSES,
+        insight_items=[safe_intelligence_insight_item(insight) for insight in insights],
+        insight_generation_allowed=insight_generation_allowed,
+        insight_generation_message=insight_generation_message,
+        active_insight=active_insight,
         audit_events=audit_events,
         review_context=review_context,
     )
+
+
+@admin_bp.route('/intelligence-automation/runs/<int:run_id>/generate-insight', methods=['POST'])
+@login_required
+@admin_required
+def intelligence_automation_run_generate_insight(run_id):
+    automation_run = DocumentAutomationRun.query.get_or_404(run_id)
+    insight, result = generate_intelligence_insight(
+        automation_run,
+        actor_user_id=current_user.id,
+    )
+    if not result['eligible']:
+        flash(result['message'], 'error')
+        return redirect(url_for('admin.intelligence_automation_run_detail', run_id=automation_run.id))
+    db.session.commit()
+    if result['created']:
+        flash('Insight generated for admin review. No data was published.', 'success')
+    else:
+        flash('An active insight already exists for this automation run.', 'warning')
+    return redirect(url_for('admin.intelligence_insight_detail', insight_id=insight.id))
 
 
 @admin_bp.route('/intelligence-automation/runs/<int:run_id>/process', methods=['POST'])

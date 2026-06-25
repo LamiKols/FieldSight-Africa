@@ -187,6 +187,22 @@ AUTOMATION_SCHEDULE_RUN_STATUSES = [
     "failed",
 ]
 
+INTELLIGENCE_INSIGHT_STATUSES = [
+    "draft",
+    "generated",
+    "in_review",
+    "approved",
+    "rejected",
+    "archived",
+]
+
+INTELLIGENCE_INSIGHT_PUBLISHING_CANDIDATE_STATUSES = [
+    "not_candidate",
+    "candidate_pending_review",
+    "approved_candidate",
+    "blocked",
+]
+
 COMMERCIAL_REQUEST_TYPES = [
     "live_intelligence",
     "api_access",
@@ -1094,6 +1110,35 @@ class AutomationScheduledRunLog(TimestampMixin, db.Model):
 
     schedule_config = db.relationship('AutomationScheduleConfig', backref='run_logs')
     requested_by_user = db.relationship('User', backref='automation_scheduled_run_logs')
+
+
+class IntelligenceInsight(TimestampMixin, db.Model):
+    __tablename__ = 'intelligence_insights'
+
+    id = db.Column(db.Integer, primary_key=True)
+    automation_run_id = db.Column(db.Integer, db.ForeignKey('document_automation_runs.id'), nullable=False)
+    actor_document_id = db.Column(db.Integer, db.ForeignKey('actor_documents.id'), nullable=False)
+    extraction_run_id = db.Column(db.Integer, db.ForeignKey('document_extraction_runs.id'))
+    insight_type = db.Column(db.String(80), default='document_intelligence_summary', nullable=False)
+    status = db.Column(db.String(50), default='generated', nullable=False)
+    title = db.Column(db.String(255), nullable=False)
+    summary = db.Column(db.Text)
+    safe_summary_json = db.Column(db.JSON, default=dict)
+    key_findings_json = db.Column(db.JSON, default=list)
+    governance_flags_json = db.Column(db.JSON, default=list)
+    publishing_candidate_status = db.Column(db.String(50), default='not_candidate', nullable=False)
+    review_notes = db.Column(db.Text)
+    generated_at = db.Column(db.DateTime, default=datetime.utcnow)
+    reviewed_at = db.Column(db.DateTime)
+    archived_at = db.Column(db.DateTime)
+    generated_by_user_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+    reviewed_by_user_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+
+    automation_run = db.relationship('DocumentAutomationRun', backref='intelligence_insights')
+    actor_document = db.relationship('ActorDocument', backref='intelligence_insights')
+    extraction_run = db.relationship('DocumentExtractionRun', backref='intelligence_insights')
+    generated_by_user = db.relationship('User', foreign_keys=[generated_by_user_id], backref='generated_intelligence_insights')
+    reviewed_by_user = db.relationship('User', foreign_keys=[reviewed_by_user_id], backref='reviewed_intelligence_insights')
 
 
 class DocumentReview(TimestampMixin, db.Model):

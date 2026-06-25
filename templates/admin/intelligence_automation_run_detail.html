@@ -14,6 +14,13 @@
             {% if item.document %}
             <a href="{{ url_for('admin.document_review_detail', document_id=item.document.id) }}" class="border border-gray-300 text-gray-700 px-5 py-2 rounded-lg hover:border-primary hover:text-primary transition">Document Review</a>
             {% endif %}
+            {% if active_insight %}
+            <a href="{{ url_for('admin.intelligence_insight_detail', insight_id=active_insight.id) }}" class="border border-primary text-primary px-5 py-2 rounded-lg hover:bg-primary hover:text-white transition">Open Insight</a>
+            {% elif insight_generation_allowed %}
+            <form method="POST" action="{{ url_for('admin.intelligence_automation_run_generate_insight', run_id=automation_run.id) }}">
+                <button type="submit" class="border border-primary text-primary px-5 py-2 rounded-lg hover:bg-primary hover:text-white transition">Generate Insight</button>
+            </form>
+            {% endif %}
             {% if automation_run.status == 'queued' %}
             <form method="POST" action="{{ url_for('admin.intelligence_automation_run_process', run_id=automation_run.id) }}">
                 <button type="submit" class="bg-primary text-white px-5 py-2 rounded-lg hover:bg-secondary transition">Process</button>
@@ -34,6 +41,9 @@
 
     <div class="rounded-xl bg-blue-50 border border-blue-200 p-5 mb-6 text-sm text-blue-800">
         This run tracks internal automation state only. It does not create subscriber access, API output, buyer access, public links, or document downloads.
+        {% if not insight_generation_allowed and not active_insight %}
+        <span class="block mt-2">{{ insight_generation_message }}</span>
+        {% endif %}
     </div>
 
     <div class="grid lg:grid-cols-4 gap-6 mb-6">
@@ -107,6 +117,48 @@
             </div>
         </section>
     </div>
+
+    <section class="bg-white rounded-xl shadow-sm border overflow-hidden mb-6">
+        <div class="px-6 py-4 border-b flex items-center justify-between gap-4">
+            <div>
+                <h2 class="text-xl font-semibold text-gray-900">Generated Insights</h2>
+                <p class="text-sm text-gray-500 mt-1">Internal review records derived from this automation outcome.</p>
+            </div>
+            {% if insight_generation_allowed and not active_insight %}
+            <form method="POST" action="{{ url_for('admin.intelligence_automation_run_generate_insight', run_id=automation_run.id) }}">
+                <button type="submit" class="text-primary hover:underline text-sm">Generate insight</button>
+            </form>
+            {% endif %}
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Insight</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Candidate</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Created</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Action</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y">
+                    {% for insight_item in insight_items %}
+                    <tr>
+                        <td class="px-5 py-4 text-sm text-gray-900">{{ insight_item.insight.title }}</td>
+                        <td class="px-5 py-4 text-sm text-gray-700">{{ insight_item.insight.status|replace('_', ' ')|title }}</td>
+                        <td class="px-5 py-4 text-sm text-gray-700">{{ insight_item.insight.publishing_candidate_status|replace('_', ' ')|title }}</td>
+                        <td class="px-5 py-4 text-sm text-gray-500">{{ insight_item.insight.created_at.strftime('%Y-%m-%d') if insight_item.insight.created_at else '' }}</td>
+                        <td class="px-5 py-4 text-sm"><a href="{{ url_for('admin.intelligence_insight_detail', insight_id=insight_item.insight.id) }}" class="text-primary hover:underline">Open</a></td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="5" class="px-6 py-8 text-center text-gray-500">No insights have been generated for this run.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
 
     <div class="grid lg:grid-cols-2 gap-6">
         <section class="bg-white rounded-xl shadow-sm border overflow-hidden">
