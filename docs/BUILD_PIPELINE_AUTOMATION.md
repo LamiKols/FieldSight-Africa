@@ -8,6 +8,10 @@ Branch: `feature/build-pipeline-automation-pr-validation`
 
 FieldSight Africa now has a low-cost PR validation layer so future build phases can be checked through GitHub before merge. This is build-process automation only. It does not deploy, auto-merge, close Linear issues, call Replit, or change application behavior.
 
+FSA-31 extends this pipeline with a release-sized build workflow. Future work should normally be grouped into larger coherent release issues rather than many micro-phases, unless risk, ambiguity, payment impact, data exposure, or review size justifies a smaller PR.
+
+See also: `docs/RELEASE_BUILD_WORKFLOW.md`
+
 ## Source Of Truth
 
 - **Linear remains the source of truth for scope.** Every build phase should start from the Linear issue requirements and boundaries.
@@ -17,6 +21,73 @@ FieldSight Africa now has a low-cost PR validation layer so future build phases 
 - **Replit Agent is emergency/debug only.** It should not be used as routine validation because it costs money and can drift from the GitHub branch/PR workflow.
 
 ## Workflow
+
+Default to the release-sized workflow:
+
+```text
+Linear release issue -> Codex large build branch -> GitHub Actions validation -> PR review -> merge -> Replit one-command validation -> Linear Done
+```
+
+1. Read the Linear issue and linked phase documentation.
+2. Confirm whether the work should be a release-sized PR or a smaller high-risk PR.
+3. Create the requested feature branch from current `main`.
+4. Implement only the issue scope.
+5. Run local validation before pushing:
+
+   ```bash
+   python scripts/validate_all_phases.py
+   python -m compileall app.py models.py routes scripts intelligence_insights.py
+   git diff --check
+   ```
+
+6. Push the branch and open a draft PR into `main`.
+7. Confirm GitHub Actions PR validation passes.
+8. Review the PR template checklist before merge.
+9. Merge only after review and validation are acceptable.
+10. Pull latest `main` in Replit and run:
+
+   ```bash
+   python scripts/post_merge_validate.py
+   ```
+
+11. Run focused Replit browser/runtime smoke checks for the changed area.
+12. Move the Linear issue to Done only after post-merge Replit validation passes.
+
+## Local Validation Before Completion
+
+For every Codex build branch:
+
+```bash
+python scripts/validate_all_phases.py
+python -m compileall app.py models.py routes scripts intelligence_insights.py
+git diff --check
+```
+
+The same commands remain the core GitHub Actions checks.
+
+## Post-Merge Validation
+
+Added by FSA-31:
+
+`scripts/post_merge_validate.py`
+
+Run this in the Replit shell after pulling merged `main`:
+
+```bash
+python scripts/post_merge_validate.py
+```
+
+The script fails fast and runs:
+
+- `python scripts/validate_all_phases.py`;
+- `python -m compileall app.py models.py routes scripts intelligence_insights.py`;
+- `git diff --check`.
+
+This is still runtime validation only. It does not deploy, auto-merge, auto-close Linear, call Replit Agent, or change application behavior.
+
+## Earlier Micro-Phase Workflow
+
+The original micro-phase workflow remains valid for high-risk work, but should not be the default:
 
 1. Read the Linear issue and linked phase documentation.
 2. Create the requested feature branch from current `main`.
