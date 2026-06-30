@@ -35,9 +35,21 @@ from models import (
     DOCUMENT_PUBLISH_CONTROL_STATUSES,
     DOCUMENT_PUBLISH_TARGETS,
     DOCUMENT_REDACTION_STATUSES,
+    INTELLIGENCE_ALERT_STATUSES,
+    INTELLIGENCE_INGESTION_RUN_STATUSES,
     INTELLIGENCE_INSIGHT_PUBLISHING_CANDIDATE_STATUSES,
     INTELLIGENCE_INSIGHT_STATUSES,
+    INTELLIGENCE_PUBLICATION_CANDIDATE_STATUSES,
+    INTELLIGENCE_SOURCE_CADENCES,
+    INTELLIGENCE_SOURCE_CATEGORIES,
+    INTELLIGENCE_SOURCE_STATUSES,
+    INTELLIGENCE_SOURCE_TRUST_LEVELS,
+    IntelligenceAlert,
+    IntelligenceChangeEvent,
+    IntelligenceIngestionRun,
     IntelligenceInsight,
+    IntelligencePublicationCandidate,
+    IntelligenceSource,
     MarketActor,
     PartnerOrganization,
     db,
@@ -92,6 +104,17 @@ from intelligence_insights import (
     generate_intelligence_insight,
     generation_eligibility,
     update_intelligence_insight_review,
+)
+from intelligence_engine import (
+    create_manual_ingestion_run,
+    create_or_update_source,
+    create_publication_candidate_from_alert,
+    ingestion_run_snapshot,
+    safe_alert_item,
+    source_is_runnable,
+    source_snapshot,
+    update_alert_review,
+    update_publication_candidate,
 )
 
 admin_bp = Blueprint('admin', __name__, url_prefix='/admin')
@@ -357,6 +380,41 @@ INTELLIGENCE_INSIGHT_PUBLISHING_LABELS = {
     'candidate_pending_review': 'Candidate Pending Review',
     'approved_candidate': 'Approved Candidate',
     'blocked': 'Blocked',
+}
+
+INTELLIGENCE_SOURCE_STATUS_LABELS = {
+    status: status.replace('_', ' ').title()
+    for status in INTELLIGENCE_SOURCE_STATUSES
+}
+
+INTELLIGENCE_SOURCE_CATEGORY_LABELS = {
+    category: category.replace('_', ' ').title()
+    for category in INTELLIGENCE_SOURCE_CATEGORIES
+}
+
+INTELLIGENCE_SOURCE_TRUST_LABELS = {
+    trust: trust.replace('_', ' ').title()
+    for trust in INTELLIGENCE_SOURCE_TRUST_LEVELS
+}
+
+INTELLIGENCE_SOURCE_CADENCE_LABELS = {
+    cadence: cadence.replace('_', ' ').title()
+    for cadence in INTELLIGENCE_SOURCE_CADENCES
+}
+
+INTELLIGENCE_INGESTION_STATUS_LABELS = {
+    status: status.replace('_', ' ').title()
+    for status in INTELLIGENCE_INGESTION_RUN_STATUSES
+}
+
+INTELLIGENCE_ALERT_STATUS_LABELS = {
+    status: status.replace('_', ' ').title()
+    for status in INTELLIGENCE_ALERT_STATUSES
+}
+
+INTELLIGENCE_PUBLICATION_STATUS_LABELS = {
+    status: status.replace('_', ' ').title()
+    for status in INTELLIGENCE_PUBLICATION_CANDIDATE_STATUSES
 }
 
 
@@ -2022,6 +2080,17 @@ def automation_dashboard_context():
             IntelligenceInsight.status.in_(['generated', 'in_review'])
         ).count(),
         'approved_insight_count': IntelligenceInsight.query.filter_by(status='approved').count(),
+        'intelligence_source_count': IntelligenceSource.query.count(),
+        'active_intelligence_source_count': IntelligenceSource.query.filter_by(status='active').count(),
+        'recent_ingestion_count': IntelligenceIngestionRun.query.filter(
+            IntelligenceIngestionRun.created_at >= now - timedelta(days=7)
+        ).count(),
+        'open_intelligence_alert_count': IntelligenceAlert.query.filter(
+            IntelligenceAlert.status.in_(['open', 'in_review'])
+        ).count(),
+        'publication_candidate_count': IntelligencePublicationCandidate.query.filter(
+            IntelligencePublicationCandidate.status.in_(['draft', 'in_review', 'approved'])
+        ).count(),
     }
 
 
@@ -2047,6 +2116,9 @@ def dashboard():
     automation_attention_count = DocumentAutomationRun.query.filter(
         DocumentAutomationRun.status.in_(['queued', 'running', 'needs_review', 'failed'])
     ).count()
+    open_intelligence_alert_count = IntelligenceAlert.query.filter(
+        IntelligenceAlert.status.in_(['open', 'in_review'])
+    ).count()
     
     recent_exports = ExportLog.query.order_by(ExportLog.exported_at.desc()).limit(10).all()
     
@@ -2062,6 +2134,7 @@ def dashboard():
                            commercial_requests_ready_for_fulfilment=commercial_requests_ready_for_fulfilment,
                            commercial_report_followups=commercial_report_followups,
                            automation_attention_count=automation_attention_count,
+                           open_intelligence_alert_count=open_intelligence_alert_count,
                            recent_exports=recent_exports)
 
 
@@ -2073,6 +2146,337 @@ def intelligence_automation_dashboard():
         'admin/intelligence_automation.html',
         status_labels=AUTOMATION_STATUS_LABELS,
         **automation_dashboard_context(),
+    )
+
+
+@admin_bp.route('/intelligence-sources')
+@login_required
+@admin_required
+def intelligence_sources():
+    selected_status = request.args.get('status', '').strip()
+    selected_category = request.args.get('category', '').strip()
+    query = IntelligenceSource.query
+    if selected_status in INTELLIGENCE_SOURCE_STATUSES:
+        query = query.filter_by(status=selected_status)
+    else:
+        selected_status = ''
+    if selected_category in INTELLIGENCE_SOURCE_CATEGORIES:
+        query = query.filter_by(category=selected_category)
+    else:
+        selected_category = ''
+    sources = query.order_by(IntelligenceSource.updated_at.desc(), IntelligenceSource.id.desc()).all()
+    return render_template(
+        'admin/intelligence_sources.html',
+        sources=sources,
+        statuses=INTELLIGENCE_SOURCE_STATUSES,
+        categories=INTELLIGENCE_SOURCE_CATEGORIES,
+        status_labels=INTELLIGENCE_SOURCE_STATUS_LABELS,
+        category_labels=INTELLIGENCE_SOURCE_CATEGORY_LABELS,
+        trust_labels=INTELLIGENCE_SOURCE_TRUST_LABELS,
+        cadence_labels=INTELLIGENCE_SOURCE_CADENCE_LABELS,
+        selected_status=selected_status,
+        selected_category=selected_category,
+    )
+
+
+@admin_bp.route('/intelligence-sources/new', methods=['GET', 'POST'])
+@login_required
+@admin_required
+def intelligence_source_new():
+    if request.method == 'POST':
+        source, result = create_or_update_source(request.form, actor_user_id=current_user.id)
+        if not result['saved']:
+            flash(result['message'], 'error')
+            return render_template(
+                'admin/intelligence_source_form.html',
+                source=None,
+                statuses=INTELLIGENCE_SOURCE_STATUSES,
+                categories=INTELLIGENCE_SOURCE_CATEGORIES,
+                trust_levels=INTELLIGENCE_SOURCE_TRUST_LEVELS,
+                cadences=INTELLIGENCE_SOURCE_CADENCES,
+                status_labels=INTELLIGENCE_SOURCE_STATUS_LABELS,
+                category_labels=INTELLIGENCE_SOURCE_CATEGORY_LABELS,
+                trust_labels=INTELLIGENCE_SOURCE_TRUST_LABELS,
+                cadence_labels=INTELLIGENCE_SOURCE_CADENCE_LABELS,
+                values=request.form,
+            )
+        db.session.commit()
+        flash('Intelligence source created safely. No external crawl or access was created.', 'success')
+        return redirect(url_for('admin.intelligence_source_detail', source_id=source.id))
+
+    return render_template(
+        'admin/intelligence_source_form.html',
+        source=None,
+        statuses=INTELLIGENCE_SOURCE_STATUSES,
+        categories=INTELLIGENCE_SOURCE_CATEGORIES,
+        trust_levels=INTELLIGENCE_SOURCE_TRUST_LEVELS,
+        cadences=INTELLIGENCE_SOURCE_CADENCES,
+        status_labels=INTELLIGENCE_SOURCE_STATUS_LABELS,
+        category_labels=INTELLIGENCE_SOURCE_CATEGORY_LABELS,
+        trust_labels=INTELLIGENCE_SOURCE_TRUST_LABELS,
+        cadence_labels=INTELLIGENCE_SOURCE_CADENCE_LABELS,
+        values={},
+    )
+
+
+@admin_bp.route('/intelligence-sources/<int:source_id>')
+@login_required
+@admin_required
+def intelligence_source_detail(source_id):
+    source = IntelligenceSource.query.get_or_404(source_id)
+    runs = (
+        IntelligenceIngestionRun.query.filter_by(source_id=source.id)
+        .order_by(IntelligenceIngestionRun.created_at.desc(), IntelligenceIngestionRun.id.desc())
+        .limit(20)
+        .all()
+    )
+    alerts = (
+        IntelligenceAlert.query.filter_by(source_id=source.id)
+        .order_by(IntelligenceAlert.created_at.desc(), IntelligenceAlert.id.desc())
+        .limit(20)
+        .all()
+    )
+    approved_insights = (
+        IntelligenceInsight.query.filter(IntelligenceInsight.status != 'archived')
+        .order_by(IntelligenceInsight.created_at.desc(), IntelligenceInsight.id.desc())
+        .limit(30)
+        .all()
+    )
+    can_run, run_message = source_is_runnable(source)
+    return render_template(
+        'admin/intelligence_source_detail.html',
+        source=source,
+        source_snapshot=source_snapshot(source),
+        runs=runs,
+        alerts=alerts,
+        approved_insights=approved_insights,
+        can_run=can_run,
+        run_message=run_message,
+        status_labels=INTELLIGENCE_SOURCE_STATUS_LABELS,
+        category_labels=INTELLIGENCE_SOURCE_CATEGORY_LABELS,
+        trust_labels=INTELLIGENCE_SOURCE_TRUST_LABELS,
+        cadence_labels=INTELLIGENCE_SOURCE_CADENCE_LABELS,
+        ingestion_status_labels=INTELLIGENCE_INGESTION_STATUS_LABELS,
+        alert_status_labels=INTELLIGENCE_ALERT_STATUS_LABELS,
+    )
+
+
+@admin_bp.route('/intelligence-sources/<int:source_id>/edit', methods=['GET', 'POST'])
+@login_required
+@admin_required
+def intelligence_source_edit(source_id):
+    source = IntelligenceSource.query.get_or_404(source_id)
+    if request.method == 'POST':
+        source, result = create_or_update_source(request.form, source=source, actor_user_id=current_user.id)
+        if not result['saved']:
+            flash(result['message'], 'error')
+        else:
+            db.session.commit()
+            flash('Intelligence source updated safely.', 'success')
+            return redirect(url_for('admin.intelligence_source_detail', source_id=source.id))
+
+    return render_template(
+        'admin/intelligence_source_form.html',
+        source=source,
+        statuses=INTELLIGENCE_SOURCE_STATUSES,
+        categories=INTELLIGENCE_SOURCE_CATEGORIES,
+        trust_levels=INTELLIGENCE_SOURCE_TRUST_LEVELS,
+        cadences=INTELLIGENCE_SOURCE_CADENCES,
+        status_labels=INTELLIGENCE_SOURCE_STATUS_LABELS,
+        category_labels=INTELLIGENCE_SOURCE_CATEGORY_LABELS,
+        trust_labels=INTELLIGENCE_SOURCE_TRUST_LABELS,
+        cadence_labels=INTELLIGENCE_SOURCE_CADENCE_LABELS,
+        values={},
+    )
+
+
+@admin_bp.route('/intelligence-sources/<int:source_id>/run', methods=['POST'])
+@login_required
+@admin_required
+def intelligence_source_run(source_id):
+    source = IntelligenceSource.query.get_or_404(source_id)
+    run, result = create_manual_ingestion_run(
+        source,
+        actor_user_id=current_user.id,
+        linked_insight_id=clean_admin_form_value('linked_intelligence_insight_id'),
+    )
+    if not result['created']:
+        db.session.commit()
+        flash(result['message'], 'error')
+        return redirect(url_for('admin.intelligence_source_detail', source_id=source.id))
+    db.session.commit()
+    flash('Manual ingestion run created. No external crawl, publishing, or access grant occurred.', 'success')
+    return redirect(url_for('admin.intelligence_ingestion_run_detail', run_id=run.id))
+
+
+@admin_bp.route('/intelligence-ingestion-runs')
+@login_required
+@admin_required
+def intelligence_ingestion_runs():
+    selected_status = request.args.get('status', '').strip()
+    selected_source_id = request.args.get('source_id', '').strip()
+    query = IntelligenceIngestionRun.query
+    if selected_status in INTELLIGENCE_INGESTION_RUN_STATUSES:
+        query = query.filter_by(status=selected_status)
+    else:
+        selected_status = ''
+    if selected_source_id.isdigit():
+        query = query.filter_by(source_id=int(selected_source_id))
+    else:
+        selected_source_id = ''
+    runs = query.order_by(IntelligenceIngestionRun.created_at.desc(), IntelligenceIngestionRun.id.desc()).all()
+    sources = IntelligenceSource.query.order_by(IntelligenceSource.name).all()
+    return render_template(
+        'admin/intelligence_ingestion_runs.html',
+        runs=runs,
+        sources=sources,
+        statuses=INTELLIGENCE_INGESTION_RUN_STATUSES,
+        status_labels=INTELLIGENCE_INGESTION_STATUS_LABELS,
+        selected_status=selected_status,
+        selected_source_id=selected_source_id,
+    )
+
+
+@admin_bp.route('/intelligence-ingestion-runs/<int:run_id>')
+@login_required
+@admin_required
+def intelligence_ingestion_run_detail(run_id):
+    ingestion_run = IntelligenceIngestionRun.query.get_or_404(run_id)
+    audit_events = (
+        AuditLog.query.filter_by(entity_type='intelligence_ingestion_run', entity_id=ingestion_run.id)
+        .order_by(AuditLog.created_at.desc(), AuditLog.id.desc())
+        .limit(30)
+        .all()
+    )
+    return render_template(
+        'admin/intelligence_ingestion_run_detail.html',
+        ingestion_run=ingestion_run,
+        run_snapshot=ingestion_run_snapshot(ingestion_run),
+        change_events=IntelligenceChangeEvent.query.filter_by(ingestion_run_id=ingestion_run.id).order_by(IntelligenceChangeEvent.created_at.desc()).all(),
+        alert_items=[safe_alert_item(alert) for alert in ingestion_run.alerts],
+        status_labels=INTELLIGENCE_INGESTION_STATUS_LABELS,
+        alert_status_labels=INTELLIGENCE_ALERT_STATUS_LABELS,
+        audit_events=audit_events,
+    )
+
+
+@admin_bp.route('/intelligence-alerts')
+@login_required
+@admin_required
+def intelligence_alerts():
+    selected_status = request.args.get('status', '').strip()
+    query = IntelligenceAlert.query
+    if selected_status in INTELLIGENCE_ALERT_STATUSES:
+        query = query.filter_by(status=selected_status)
+    else:
+        selected_status = ''
+    alerts = query.order_by(IntelligenceAlert.created_at.desc(), IntelligenceAlert.id.desc()).all()
+    return render_template(
+        'admin/intelligence_alerts.html',
+        alert_items=[safe_alert_item(alert) for alert in alerts],
+        statuses=INTELLIGENCE_ALERT_STATUSES,
+        status_labels=INTELLIGENCE_ALERT_STATUS_LABELS,
+        selected_status=selected_status,
+    )
+
+
+@admin_bp.route('/intelligence-alerts/<int:alert_id>')
+@login_required
+@admin_required
+def intelligence_alert_detail(alert_id):
+    alert = IntelligenceAlert.query.get_or_404(alert_id)
+    audit_events = (
+        AuditLog.query.filter_by(entity_type='intelligence_alert', entity_id=alert.id)
+        .order_by(AuditLog.created_at.desc(), AuditLog.id.desc())
+        .limit(30)
+        .all()
+    )
+    return render_template(
+        'admin/intelligence_alert_detail.html',
+        item=safe_alert_item(alert),
+        alert=alert,
+        statuses=INTELLIGENCE_ALERT_STATUSES,
+        status_labels=INTELLIGENCE_ALERT_STATUS_LABELS,
+        audit_events=audit_events,
+    )
+
+
+@admin_bp.route('/intelligence-alerts/<int:alert_id>/review', methods=['POST'])
+@login_required
+@admin_required
+def intelligence_alert_review(alert_id):
+    alert = IntelligenceAlert.query.get_or_404(alert_id)
+    _success, message = update_alert_review(
+        alert,
+        clean_admin_form_value('status'),
+        review_notes=clean_admin_form_value('review_notes'),
+        actor_user_id=current_user.id,
+    )
+    candidate = None
+    if request.form.get('create_publication_candidate') == 'true':
+        candidate, candidate_result = create_publication_candidate_from_alert(alert, actor_user_id=current_user.id)
+        if not candidate_result['created']:
+            flash(candidate_result['message'], 'warning')
+    db.session.commit()
+    flash(message + ' No data was published.', 'success')
+    if candidate:
+        return redirect(url_for('admin.intelligence_publication_candidate_detail', candidate_id=candidate.id))
+    return redirect(url_for('admin.intelligence_alert_detail', alert_id=alert.id))
+
+
+@admin_bp.route('/intelligence-publication-candidates')
+@login_required
+@admin_required
+def intelligence_publication_candidates():
+    selected_status = request.args.get('status', '').strip()
+    query = IntelligencePublicationCandidate.query
+    if selected_status in INTELLIGENCE_PUBLICATION_CANDIDATE_STATUSES:
+        query = query.filter_by(status=selected_status)
+    else:
+        selected_status = ''
+    candidates = query.order_by(IntelligencePublicationCandidate.created_at.desc(), IntelligencePublicationCandidate.id.desc()).all()
+    return render_template(
+        'admin/intelligence_publication_candidates.html',
+        candidates=candidates,
+        statuses=INTELLIGENCE_PUBLICATION_CANDIDATE_STATUSES,
+        status_labels=INTELLIGENCE_PUBLICATION_STATUS_LABELS,
+        selected_status=selected_status,
+    )
+
+
+@admin_bp.route('/intelligence-publication-candidates/<int:candidate_id>', methods=['GET', 'POST'])
+@login_required
+@admin_required
+def intelligence_publication_candidate_detail(candidate_id):
+    candidate = IntelligencePublicationCandidate.query.get_or_404(candidate_id)
+    if request.method == 'POST':
+        success, message = update_publication_candidate(
+            candidate,
+            clean_admin_form_value('action'),
+            actor_user_id=current_user.id,
+            title=clean_admin_form_value('title'),
+            summary=clean_admin_form_value('summary'),
+            review_notes=clean_admin_form_value('review_notes'),
+        )
+        if success:
+            db.session.commit()
+            flash(message + ' Subscriber digest visibility remains safe-summary only.', 'success')
+        else:
+            flash(message, 'error')
+        return redirect(url_for('admin.intelligence_publication_candidate_detail', candidate_id=candidate.id))
+
+    audit_events = (
+        AuditLog.query.filter_by(entity_type='intelligence_publication_candidate', entity_id=candidate.id)
+        .order_by(AuditLog.created_at.desc(), AuditLog.id.desc())
+        .limit(30)
+        .all()
+    )
+    return render_template(
+        'admin/intelligence_publication_candidate_detail.html',
+        candidate=candidate,
+        statuses=INTELLIGENCE_PUBLICATION_CANDIDATE_STATUSES,
+        status_labels=INTELLIGENCE_PUBLICATION_STATUS_LABELS,
+        audit_events=audit_events,
     )
 
 

@@ -33,9 +33,14 @@ from models import (
     LicensedPack,
     LiveIntelligenceAccess,
     NIGERIA_REGIONS,
+    SubscriberIntelligenceDigest,
     ViewLog,
     db,
     get_user_entitlements,
+)
+from intelligence_engine import (
+    safe_subscriber_digest_payload,
+    visible_subscriber_digests,
 )
 
 subscriber_bp = Blueprint('subscriber', __name__)
@@ -441,6 +446,62 @@ def my_access():
         commercial_requests=commercial_requests,
         request_labels=COMMERCIAL_REQUEST_LABELS,
         **scope_context,
+    )
+
+
+@subscriber_bp.route('/subscriber/intelligence-digests')
+@login_required
+def intelligence_digests():
+    digests = visible_subscriber_digests()
+    items = [safe_subscriber_digest_payload(digest) for digest in digests]
+    add_subscriber_audit(
+        'subscriber_intelligence_digest_list_viewed',
+        'subscriber_intelligence_digest',
+        None,
+        after_values={
+            'visible_count': len(items),
+            'metadata_only': True,
+            'document_file_exposed': False,
+            'private_path_exposed': False,
+            'raw_extraction_text_exposed': False,
+            'restricted_fields_exposed': False,
+        },
+    )
+    db.session.commit()
+    return render_template(
+        'subscriber/intelligence_digests.html',
+        digest_items=items,
+        entitlements=get_user_entitlements(current_user),
+    )
+
+
+@subscriber_bp.route('/subscriber/intelligence-digests/<int:digest_id>')
+@login_required
+def intelligence_digest_detail(digest_id):
+    digest = db.session.get(SubscriberIntelligenceDigest, digest_id)
+    visible_ids = {item.id for item in visible_subscriber_digests()}
+    if not digest or digest.id not in visible_ids:
+        abort(404)
+    payload = safe_subscriber_digest_payload(digest)
+    add_subscriber_audit(
+        'subscriber_intelligence_digest_detail_viewed',
+        'subscriber_intelligence_digest',
+        digest.id,
+        after_values={
+            'digest_id': digest.id,
+            'metadata_only': True,
+            'document_file_exposed': False,
+            'private_path_exposed': False,
+            'raw_extraction_text_exposed': False,
+            'restricted_fields_exposed': False,
+        },
+    )
+    db.session.commit()
+    return render_template(
+        'subscriber/intelligence_digest_detail.html',
+        digest=digest,
+        payload=payload,
+        entitlements=get_user_entitlements(current_user),
     )
 
 

@@ -26,6 +26,7 @@ VALIDATION_SCRIPTS = [
     "scripts/validate_phase_5_1_automation_run_processing.py",
     "scripts/validate_phase_5_2_scheduled_processing_alerts.py",
     "scripts/validate_phase_5_3_intelligence_insight_review.py",
+    "scripts/validate_intelligence_engine_release_1.py",
 ]
 
 

@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+
+{% block title %}Publication Candidate #{{ candidate.id }} - FieldSight Africa{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4 mb-8">
+        <div>
+            <a href="{{ url_for('admin.intelligence_publication_candidates') }}" class="text-primary hover:underline text-sm">&larr; Back to Publication Candidates</a>
+            <h1 class="text-3xl font-bold text-gray-900 mt-3">Publication Candidate #{{ candidate.id }}</h1>
+            <p class="text-gray-600 mt-1">{{ status_labels.get(candidate.status, candidate.status|replace('_', ' ')|title) }} | {{ candidate.candidate_type|replace('_', ' ')|title }}</p>
+        </div>
+        <div class="flex flex-wrap gap-3">
+            {% if candidate.intelligence_alert_id %}
+            <a href="{{ url_for('admin.intelligence_alert_detail', alert_id=candidate.intelligence_alert_id) }}" class="border border-primary text-primary px-5 py-2 rounded-lg hover:bg-primary hover:text-white transition">Alert</a>
+            {% endif %}
+            {% if candidate.intelligence_insight_id %}
+            <a href="{{ url_for('admin.intelligence_insight_detail', insight_id=candidate.intelligence_insight_id) }}" class="border border-gray-300 text-gray-700 px-5 py-2 rounded-lg hover:border-primary hover:text-primary transition">Insight</a>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="rounded-xl bg-blue-50 border border-blue-200 p-5 mb-6 text-sm text-blue-800">
+        Approval creates an approved safe digest record only. It does not publish documents, expose files, grant API access, grant buyer access, or change payments.
+    </div>
+
+    <div class="grid md:grid-cols-4 gap-6 mb-6">
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <p class="text-sm text-gray-500">Status</p>
+            <p class="text-2xl font-bold text-gray-900 mt-2">{{ status_labels.get(candidate.status, candidate.status|replace('_', ' ')|title) }}</p>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <p class="text-sm text-gray-500">Digest Records</p>
+            <p class="text-2xl font-bold text-gray-900 mt-2">{{ candidate.subscriber_digests|length }}</p>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <p class="text-sm text-gray-500">Alert</p>
+            <p class="text-2xl font-bold text-gray-900 mt-2">{{ '#' ~ candidate.intelligence_alert_id if candidate.intelligence_alert_id else 'None' }}</p>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <p class="text-sm text-gray-500">Insight</p>
+            <p class="text-2xl font-bold text-gray-900 mt-2">{{ '#' ~ candidate.intelligence_insight_id if candidate.intelligence_insight_id else 'None' }}</p>
+        </div>
+    </div>
+
+    <div class="grid lg:grid-cols-3 gap-6 mb-6">
+        <section class="lg:col-span-2 bg-white rounded-xl shadow-sm border p-6">
+            <h2 class="text-xl font-semibold text-gray-900 mb-4">Review</h2>
+            <form method="POST" class="space-y-5">
+                <div>
+                    <label for="title" class="block text-sm font-medium text-gray-700 mb-1">Title</label>
+                    <input type="text" name="title" id="title" value="{{ candidate.title }}" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                </div>
+                <div>
+                    <label for="summary" class="block text-sm font-medium text-gray-700 mb-1">Summary</label>
+                    <textarea name="summary" id="summary" rows="5" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">{{ candidate.summary or '' }}</textarea>
+                </div>
+                <div>
+                    <label for="review_notes" class="block text-sm font-medium text-gray-700 mb-1">Review Notes</label>
+                    <textarea name="review_notes" id="review_notes" rows="3" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">{{ candidate.review_notes or '' }}</textarea>
+                </div>
+                <div class="flex flex-wrap gap-3">
+                    <button type="submit" name="action" value="edit" class="bg-white border border-gray-300 text-gray-700 px-5 py-2 rounded-lg hover:bg-gray-50 transition">Save Edits</button>
+                    <button type="submit" name="action" value="review" class="border border-primary text-primary px-5 py-2 rounded-lg hover:bg-primary hover:text-white transition">Move To Review</button>
+                    <button type="submit" name="action" value="approve" class="bg-primary text-white px-5 py-2 rounded-lg hover:bg-secondary transition">Approve Digest</button>
+                    <button type="submit" name="action" value="reject" class="border border-red-300 text-red-700 px-5 py-2 rounded-lg hover:bg-red-50 transition">Reject</button>
+                    <button type="submit" name="action" value="archive" class="border border-gray-300 text-gray-700 px-5 py-2 rounded-lg hover:bg-gray-50 transition">Archive</button>
+                </div>
+            </form>
+        </section>
+
+        <section class="bg-white rounded-xl shadow-sm border p-6">
+            <h2 class="text-xl font-semibold text-gray-900 mb-4">Safe Payload</h2>
+            <dl class="space-y-3 text-sm">
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Source</dt><dd class="font-medium text-gray-900">{{ candidate.safe_payload_json.source_code or 'n/a' }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Metadata Only</dt><dd class="font-medium text-gray-900">{{ 'Yes' if candidate.safe_payload_json.metadata_only else 'No' }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Files</dt><dd class="font-medium text-gray-900">{{ 'Exposed' if candidate.safe_payload_json.document_file_exposed else 'Hidden' }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">External Access</dt><dd class="font-medium text-gray-900">{{ 'Created' if candidate.safe_payload_json.external_access_created else 'Not Created' }}</dd></div>
+            </dl>
+        </section>
+    </div>
+
+    <div class="grid lg:grid-cols-2 gap-6">
+        <section class="bg-white rounded-xl shadow-sm border overflow-hidden">
+            <div class="px-6 py-4 border-b">
+                <h2 class="text-xl font-semibold text-gray-900">Subscriber Digests</h2>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Digest</th>
+                            <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                            <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Visible Until</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y">
+                        {% for digest in candidate.subscriber_digests %}
+                        <tr>
+                            <td class="px-5 py-4 text-sm text-gray-900">#{{ digest.id }}</td>
+                            <td class="px-5 py-4 text-sm text-gray-700">{{ digest.status|replace('_', ' ')|title }}</td>
+                            <td class="px-5 py-4 text-sm text-gray-500">{{ digest.visible_until.strftime('%Y-%m-%d') if digest.visible_until else 'Open' }}</td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="3" class="px-6 py-8 text-center text-gray-500">No subscriber digest has been created.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="bg-white rounded-xl shadow-sm border overflow-hidden">
+            <div class="px-6 py-4 border-b">
+                <h2 class="text-xl font-semibold text-gray-900">Audit Trail</h2>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Action</th>
+                            <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">User</th>
+                            <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Created</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y">
+                        {% for audit in audit_events %}
+                        <tr>
+                            <td class="px-5 py-3 text-sm text-gray-900">{{ audit.action|replace('_', ' ')|title }}</td>
+                            <td class="px-5 py-3 text-sm text-gray-700">{{ audit.user.email if audit.user else 'System' }}</td>
+                            <td class="px-5 py-3 text-sm text-gray-500">{{ audit.created_at.strftime('%Y-%m-%d %H:%M') if audit.created_at else '' }}</td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="3" class="px-6 py-8 text-center text-gray-500">No audit events recorded for this candidate.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </div>
+</div>
+{% endblock %}

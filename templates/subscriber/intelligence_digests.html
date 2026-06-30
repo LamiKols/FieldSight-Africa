@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+
+{% block title %}Intelligence Digests - FieldSight Africa{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4 mb-8">
+        <div>
+            <a href="{{ url_for('subscriber.my_access') }}" class="text-primary hover:underline text-sm">&larr; Back to My Access</a>
+            <h1 class="text-3xl font-bold text-gray-900 mt-3">Intelligence Digests</h1>
+            <p class="text-gray-600 mt-1">Approved safe intelligence summaries available to subscribers.</p>
+        </div>
+        <a href="{{ url_for('subscriber.products') }}" class="border border-primary text-primary px-5 py-2 rounded-lg hover:bg-primary hover:text-white transition">Products</a>
+    </div>
+
+    <div class="rounded-xl bg-blue-50 border border-blue-200 p-5 mb-6 text-sm text-blue-800">
+        Digests are safe summaries only. They do not include document files, private paths, filenames, hashes, contact fields, raw extraction text, API secrets, or restricted document fields.
+    </div>
+
+    <div class="grid md:grid-cols-3 gap-6 mb-6">
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <p class="text-sm text-gray-500">Visible Digests</p>
+            <p class="text-3xl font-bold text-gray-900 mt-2">{{ digest_items|length }}</p>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <p class="text-sm text-gray-500">Access Type</p>
+            <p class="text-2xl font-bold text-gray-900 mt-2">{{ entitlements.access_type|replace('_', ' ')|title }}</p>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <p class="text-sm text-gray-500">Format</p>
+            <p class="text-2xl font-bold text-gray-900 mt-2">Metadata Only</p>
+        </div>
+    </div>
+
+    <section class="bg-white rounded-xl shadow-sm border overflow-hidden">
+        <div class="px-6 py-4 border-b">
+            <h2 class="text-xl font-semibold text-gray-900">Approved Digests</h2>
+        </div>
+        <div class="divide-y">
+            {% for item in digest_items %}
+            <a href="{{ url_for('subscriber.intelligence_digest_detail', digest_id=item.id) }}" class="block px-6 py-5 hover:bg-gray-50">
+                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div>
+                        <p class="font-medium text-gray-900">{{ item.title }}</p>
+                        <p class="text-sm text-gray-600 mt-1">{{ item.summary }}</p>
+                    </div>
+                    <div class="text-sm text-gray-500 sm:text-right">
+                        <p>{{ item.approved_at[:10] if item.approved_at else 'Approved' }}</p>
+                        <p>{{ item.candidate_type|replace('_', ' ')|title if item.candidate_type else 'Digest' }}</p>
+                    </div>
+                </div>
+            </a>
+            {% else %}
+            <div class="px-6 py-8 text-center text-gray-500">No approved intelligence digests are available yet.</div>
+            {% endfor %}
+        </div>
+    </section>
+</div>
+{% endblock %}

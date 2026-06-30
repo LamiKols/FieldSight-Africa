@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+
+{% block title %}Intelligence Alerts - FieldSight Africa{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4 mb-8">
+        <div>
+            <a href="{{ url_for('admin.intelligence_automation_dashboard') }}" class="text-primary hover:underline text-sm">&larr; Back to Intelligence Automation</a>
+            <h1 class="text-3xl font-bold text-gray-900 mt-3">Intelligence Alerts</h1>
+            <p class="text-gray-600 mt-1">Internal alerts generated from safe ingestion changes.</p>
+        </div>
+        <a href="{{ url_for('admin.intelligence_publication_candidates') }}" class="border border-primary text-primary px-5 py-2 rounded-lg hover:bg-primary hover:text-white transition">Publication Candidates</a>
+    </div>
+
+    <div class="rounded-xl bg-blue-50 border border-blue-200 p-5 mb-6 text-sm text-blue-800">
+        Alerts are internal review records. Approval here is required before a publication candidate can be created, and still does not expose files or grant external access.
+    </div>
+
+    <form method="GET" class="bg-white rounded-xl shadow-sm border p-5 mb-6">
+        <div class="flex flex-col md:flex-row md:items-end gap-4">
+            <div>
+                <label for="status" class="block text-xs font-medium text-gray-500 uppercase mb-1">Status</label>
+                <select name="status" id="status" class="w-56 rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                    <option value="">Any</option>
+                    {% for status in statuses %}
+                    <option value="{{ status }}" {% if selected_status == status %}selected{% endif %}>{{ status_labels.get(status, status|replace('_', ' ')|title) }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="flex gap-3">
+                <button type="submit" class="bg-primary text-white px-5 py-2 rounded-lg hover:bg-secondary transition">Filter</button>
+                <a href="{{ url_for('admin.intelligence_alerts') }}" class="bg-white border border-gray-300 text-gray-700 px-5 py-2 rounded-lg hover:bg-gray-50 transition">Reset</a>
+            </div>
+        </div>
+    </form>
+
+    <div class="bg-white rounded-xl shadow-sm border overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="w-full">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Alert</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Source</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Severity</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Candidate Gate</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Action</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y">
+                    {% for item in alert_items %}
+                    <tr class="hover:bg-gray-50">
+                        <td class="px-5 py-4 text-sm text-gray-900">
+                            <p>{{ item.alert.title }}</p>
+                            <p class="text-xs text-gray-500">#{{ item.alert.id }}</p>
+                        </td>
+                        <td class="px-5 py-4 text-sm text-gray-700">{{ item.source.name if item.source else 'Unknown source' }}</td>
+                        <td class="px-5 py-4 text-sm text-gray-700">{{ status_labels.get(item.alert.status, item.alert.status|replace('_', ' ')|title) }}</td>
+                        <td class="px-5 py-4 text-sm text-gray-700">{{ item.alert.severity|replace('_', ' ')|title }}</td>
+                        <td class="px-5 py-4 text-sm text-gray-700">{{ item.publication_candidate_message }}</td>
+                        <td class="px-5 py-4 text-sm"><a href="{{ url_for('admin.intelligence_alert_detail', alert_id=item.alert.id) }}" class="text-primary hover:underline">Review</a></td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="6" class="px-6 py-8 text-center text-gray-500">No intelligence alerts match the current filters.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
