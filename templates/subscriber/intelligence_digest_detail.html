@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+
+{% block title %}Intelligence Digest #{{ digest.id }} - FieldSight Africa{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="mb-8">
+        <a href="{{ url_for('subscriber.intelligence_digests') }}" class="text-primary hover:underline text-sm">&larr; Back to Intelligence Digests</a>
+        <h1 class="text-3xl font-bold text-gray-900 mt-3">{{ payload.title }}</h1>
+        <p class="text-gray-600 mt-1">Approved safe intelligence summary.</p>
+    </div>
+
+    <div class="rounded-xl bg-blue-50 border border-blue-200 p-5 mb-6 text-sm text-blue-800">
+        This digest is a metadata-only intelligence summary. Document files, private paths, filenames, hashes, contact fields, raw extraction text, API secrets, and restricted fields are not exposed.
+    </div>
+
+    <div class="grid md:grid-cols-3 gap-6 mb-6">
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <p class="text-sm text-gray-500">Status</p>
+            <p class="text-2xl font-bold text-gray-900 mt-2">{{ payload.status|replace('_', ' ')|title }}</p>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <p class="text-sm text-gray-500">Approved</p>
+            <p class="text-2xl font-bold text-gray-900 mt-2">{{ payload.approved_at[:10] if payload.approved_at else 'Approved' }}</p>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <p class="text-sm text-gray-500">Format</p>
+            <p class="text-2xl font-bold text-gray-900 mt-2">Metadata Only</p>
+        </div>
+    </div>
+
+    <section class="bg-white rounded-xl shadow-sm border p-6 mb-6">
+        <h2 class="text-xl font-semibold text-gray-900 mb-4">Summary</h2>
+        <p class="text-gray-700 leading-relaxed">{{ payload.summary }}</p>
+    </section>
+
+    <section class="bg-white rounded-xl shadow-sm border p-6">
+        <h2 class="text-xl font-semibold text-gray-900 mb-4">Governance Snapshot</h2>
+        <dl class="grid md:grid-cols-2 gap-4 text-sm">
+            <div class="flex justify-between gap-4"><dt class="text-gray-500">Metadata Only</dt><dd class="font-medium text-gray-900">{{ 'Yes' if payload.metadata_only else 'No' }}</dd></div>
+            <div class="flex justify-between gap-4"><dt class="text-gray-500">External Access</dt><dd class="font-medium text-gray-900">{{ 'Created' if payload.external_access_created else 'Not Created' }}</dd></div>
+            <div class="flex justify-between gap-4"><dt class="text-gray-500">Document Files</dt><dd class="font-medium text-gray-900">{{ 'Exposed' if payload.document_file_exposed else 'Hidden' }}</dd></div>
+            <div class="flex justify-between gap-4"><dt class="text-gray-500">Private Paths</dt><dd class="font-medium text-gray-900">{{ 'Exposed' if payload.private_path_exposed else 'Hidden' }}</dd></div>
+            <div class="flex justify-between gap-4"><dt class="text-gray-500">Raw Extraction Text</dt><dd class="font-medium text-gray-900">{{ 'Exposed' if payload.raw_extraction_text_exposed else 'Hidden' }}</dd></div>
+            <div class="flex justify-between gap-4"><dt class="text-gray-500">Restricted Fields</dt><dd class="font-medium text-gray-900">{{ 'Exposed' if payload.restricted_fields_exposed else 'Hidden' }}</dd></div>
+        </dl>
+    </section>
+</div>
+{% endblock %}

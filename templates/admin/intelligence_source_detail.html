@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+
+{% block title %}Intelligence Source #{{ source.id }} - FieldSight Africa{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4 mb-8">
+        <div>
+            <a href="{{ url_for('admin.intelligence_sources') }}" class="text-primary hover:underline text-sm">&larr; Back to Sources</a>
+            <h1 class="text-3xl font-bold text-gray-900 mt-3">{{ source.name }}</h1>
+            <p class="text-gray-600 mt-1">{{ source.source_code }} | {{ category_labels.get(source.category, source.category|replace('_', ' ')|title) }}</p>
+        </div>
+        <div class="flex flex-wrap gap-3">
+            <a href="{{ url_for('admin.intelligence_source_edit', source_id=source.id) }}" class="border border-primary text-primary px-5 py-2 rounded-lg hover:bg-primary hover:text-white transition">Edit Source</a>
+            <a href="{{ url_for('admin.intelligence_ingestion_runs', source_id=source.id) }}" class="border border-gray-300 text-gray-700 px-5 py-2 rounded-lg hover:border-primary hover:text-primary transition">Runs</a>
+        </div>
+    </div>
+
+    <div class="rounded-xl bg-blue-50 border border-blue-200 p-5 mb-6 text-sm text-blue-800">
+        Manual source runs create internal records only. No external crawling, subscriber access, API output, buyer access, public links, or publishing is created.
+    </div>
+
+    <div class="grid md:grid-cols-4 gap-6 mb-6">
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <p class="text-sm text-gray-500">Status</p>
+            <p class="text-2xl font-bold text-gray-900 mt-2">{{ status_labels.get(source.status, source.status|replace('_', ' ')|title) }}</p>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <p class="text-sm text-gray-500">Trust</p>
+            <p class="text-2xl font-bold text-gray-900 mt-2">{{ trust_labels.get(source.trust_level, source.trust_level|replace('_', ' ')|title) }}</p>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <p class="text-sm text-gray-500">Cadence</p>
+            <p class="text-2xl font-bold text-gray-900 mt-2">{{ cadence_labels.get(source.cadence, source.cadence|replace('_', ' ')|title) }}</p>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <p class="text-sm text-gray-500">Last Run</p>
+            <p class="text-2xl font-bold text-gray-900 mt-2">{{ source.last_run_at.strftime('%Y-%m-%d') if source.last_run_at else 'Never' }}</p>
+        </div>
+    </div>
+
+    <div class="grid lg:grid-cols-3 gap-6 mb-6">
+        <section class="lg:col-span-2 bg-white rounded-xl shadow-sm border p-6">
+            <h2 class="text-xl font-semibold text-gray-900 mb-4">Source Summary</h2>
+            <dl class="grid md:grid-cols-2 gap-4 text-sm">
+                <div><dt class="text-gray-500">Owner Team</dt><dd class="font-medium text-gray-900">{{ source.owner_team or 'Not set' }}</dd></div>
+                <div><dt class="text-gray-500">Public Reference</dt><dd class="font-medium text-gray-900">{{ source.public_reference_url or 'Not set' }}</dd></div>
+                <div class="md:col-span-2"><dt class="text-gray-500">Description</dt><dd class="font-medium text-gray-900">{{ source.description or 'No description stored.' }}</dd></div>
+            </dl>
+            <div class="mt-5">
+                <h3 class="text-sm font-semibold text-gray-900 mb-2">Safe Configuration</h3>
+                <div class="grid md:grid-cols-2 gap-3">
+                    {% for key, value in (source.safe_configuration_json or {}).items() %}
+                    <div class="rounded-lg border border-gray-200 p-3 text-sm">
+                        <p class="text-xs uppercase text-gray-500">{{ key|replace('_', ' ') }}</p>
+                        <p class="font-medium text-gray-900 mt-1">{{ value }}</p>
+                    </div>
+                    {% else %}
+                    <p class="text-sm text-gray-600">No safe configuration is stored.</p>
+                    {% endfor %}
+                </div>
+            </div>
+        </section>
+
+        <section class="bg-white rounded-xl shadow-sm border p-6">
+            <h2 class="text-xl font-semibold text-gray-900 mb-4">Manual Run</h2>
+            <p class="text-sm text-gray-600 mb-4">{{ run_message }}</p>
+            <form method="POST" action="{{ url_for('admin.intelligence_source_run', source_id=source.id) }}" class="space-y-4">
+                <div>
+                    <label for="linked_intelligence_insight_id" class="block text-sm font-medium text-gray-700 mb-1">Linked Insight</label>
+                    <select name="linked_intelligence_insight_id" id="linked_intelligence_insight_id" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                        <option value="">None</option>
+                        {% for insight in approved_insights %}
+                        <option value="{{ insight.id }}">#{{ insight.id }} - {{ insight.status|replace('_', ' ')|title }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <button type="submit" {% if not can_run %}disabled{% endif %} class="w-full px-5 py-2 rounded-lg transition {{ 'bg-primary text-white hover:bg-secondary' if can_run else 'bg-gray-100 text-gray-400 cursor-not-allowed' }}">Create Manual Run</button>
+            </form>
+        </section>
+    </div>
+
+    <div class="grid lg:grid-cols-2 gap-6">
+        <section class="bg-white rounded-xl shadow-sm border overflow-hidden">
+            <div class="px-6 py-4 border-b flex items-center justify-between">
+                <h2 class="text-xl font-semibold text-gray-900">Recent Runs</h2>
+                <a href="{{ url_for('admin.intelligence_ingestion_runs', source_id=source.id) }}" class="text-sm text-primary hover:underline">All runs</a>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Run</th>
+                            <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                            <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Changes</th>
+                            <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y">
+                        {% for run in runs %}
+                        <tr>
+                            <td class="px-5 py-4 text-sm text-gray-900">#{{ run.id }}</td>
+                            <td class="px-5 py-4 text-sm text-gray-700">{{ ingestion_status_labels.get(run.status, run.status|replace('_', ' ')|title) }}</td>
+                            <td class="px-5 py-4 text-sm text-gray-700">{{ run.detected_change_count or 0 }}</td>
+                            <td class="px-5 py-4 text-sm"><a href="{{ url_for('admin.intelligence_ingestion_run_detail', run_id=run.id) }}" class="text-primary hover:underline">Open</a></td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="4" class="px-6 py-8 text-center text-gray-500">No ingestion runs yet.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="bg-white rounded-xl shadow-sm border overflow-hidden">
+            <div class="px-6 py-4 border-b flex items-center justify-between">
+                <h2 class="text-xl font-semibold text-gray-900">Recent Alerts</h2>
+                <a href="{{ url_for('admin.intelligence_alerts') }}" class="text-sm text-primary hover:underline">Alert queue</a>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Alert</th>
+                            <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                            <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y">
+                        {% for alert in alerts %}
+                        <tr>
+                            <td class="px-5 py-4 text-sm text-gray-900">{{ alert.title }}</td>
+                            <td class="px-5 py-4 text-sm text-gray-700">{{ alert_status_labels.get(alert.status, alert.status|replace('_', ' ')|title) }}</td>
+                            <td class="px-5 py-4 text-sm"><a href="{{ url_for('admin.intelligence_alert_detail', alert_id=alert.id) }}" class="text-primary hover:underline">Review</a></td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="3" class="px-6 py-8 text-center text-gray-500">No alerts have been created from this source.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+
+{% block title %}{{ 'Edit' if source else 'New' }} Intelligence Source - FieldSight Africa{% endblock %}
+
+{% block content %}
+{% set form_source_code = values.get('source_code') if values else (source.source_code if source else '') %}
+{% set form_name = values.get('name') if values else (source.name if source else '') %}
+{% set form_description = values.get('description') if values else (source.description if source else '') %}
+{% set form_category = values.get('category') if values else (source.category if source else 'manual_research') %}
+{% set form_status = values.get('status') if values else (source.status if source else 'active') %}
+{% set form_trust = values.get('trust_level') if values else (source.trust_level if source else 'medium') %}
+{% set form_cadence = values.get('cadence') if values else (source.cadence if source else 'manual') %}
+{% set form_owner = values.get('owner_team') if values else (source.owner_team if source else '') %}
+{% set form_url = values.get('public_reference_url') if values else (source.public_reference_url if source else '') %}
+{% set form_config = values.get('safe_configuration_json') if values else ((source.safe_configuration_json or {})|tojson if source else '') %}
+{% set form_fields = values.get('allowed_summary_fields_json') if values else ((source.allowed_summary_fields_json or [])|join(', ') if source else '') %}
+
+<div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="mb-8">
+        <a href="{{ url_for('admin.intelligence_sources') }}" class="text-primary hover:underline text-sm">&larr; Back to Sources</a>
+        <h1 class="text-3xl font-bold text-gray-900 mt-3">{{ 'Edit' if source else 'New' }} Intelligence Source</h1>
+        <p class="text-gray-600 mt-1">Register safe source metadata for controlled manual ingestion.</p>
+    </div>
+
+    <div class="rounded-xl bg-blue-50 border border-blue-200 p-5 mb-6 text-sm text-blue-800">
+        Do not store secrets, credentials, private paths, filenames, hashes, contact fields, restricted document fields, or raw extraction text. Unsafe configuration keys and values are discarded before save.
+    </div>
+
+    <form method="POST" class="bg-white rounded-xl shadow-sm border p-6 space-y-5">
+        <div class="grid md:grid-cols-2 gap-5">
+            <div>
+                <label for="source_code" class="block text-sm font-medium text-gray-700 mb-1">Source Code</label>
+                <input type="text" name="source_code" id="source_code" value="{{ form_source_code }}" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="market_signal_weekly">
+            </div>
+            <div>
+                <label for="name" class="block text-sm font-medium text-gray-700 mb-1">Name</label>
+                <input type="text" name="name" id="name" value="{{ form_name }}" required class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+            </div>
+            <div>
+                <label for="category" class="block text-sm font-medium text-gray-700 mb-1">Category</label>
+                <select name="category" id="category" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                    {% for category in categories %}
+                    <option value="{{ category }}" {% if form_category == category %}selected{% endif %}>{{ category_labels.get(category, category|replace('_', ' ')|title) }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label for="status" class="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                <select name="status" id="status" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                    {% for status in statuses %}
+                    <option value="{{ status }}" {% if form_status == status %}selected{% endif %}>{{ status_labels.get(status, status|replace('_', ' ')|title) }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label for="trust_level" class="block text-sm font-medium text-gray-700 mb-1">Trust Level</label>
+                <select name="trust_level" id="trust_level" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                    {% for trust in trust_levels %}
+                    <option value="{{ trust }}" {% if form_trust == trust %}selected{% endif %}>{{ trust_labels.get(trust, trust|replace('_', ' ')|title) }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label for="cadence" class="block text-sm font-medium text-gray-700 mb-1">Cadence</label>
+                <select name="cadence" id="cadence" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                    {% for cadence in cadences %}
+                    <option value="{{ cadence }}" {% if form_cadence == cadence %}selected{% endif %}>{{ cadence_labels.get(cadence, cadence|replace('_', ' ')|title) }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label for="owner_team" class="block text-sm font-medium text-gray-700 mb-1">Owner Team</label>
+                <input type="text" name="owner_team" id="owner_team" value="{{ form_owner }}" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+            </div>
+            <div>
+                <label for="public_reference_url" class="block text-sm font-medium text-gray-700 mb-1">Public Reference URL</label>
+                <input type="url" name="public_reference_url" id="public_reference_url" value="{{ form_url }}" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+            </div>
+        </div>
+
+        <div>
+            <label for="description" class="block text-sm font-medium text-gray-700 mb-1">Description</label>
+            <textarea name="description" id="description" rows="3" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">{{ form_description or '' }}</textarea>
+        </div>
+
+        <div>
+            <label for="safe_configuration_json" class="block text-sm font-medium text-gray-700 mb-1">Safe Configuration JSON</label>
+            <textarea name="safe_configuration_json" id="safe_configuration_json" rows="6" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono">{{ form_config or '' }}</textarea>
+            <p class="text-xs text-gray-500 mt-1">Use only safe labels such as region, crop, product, signal type, or public cadence notes.</p>
+        </div>
+
+        <div>
+            <label for="allowed_summary_fields_json" class="block text-sm font-medium text-gray-700 mb-1">Allowed Summary Fields</label>
+            <input type="text" name="allowed_summary_fields_json" id="allowed_summary_fields_json" value="{{ form_fields }}" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="region_code, crop, signal_type">
+        </div>
+
+        <div class="flex flex-wrap gap-3">
+            <button type="submit" class="bg-primary text-white px-5 py-2 rounded-lg hover:bg-secondary transition">Save Source</button>
+            <a href="{{ url_for('admin.intelligence_source_detail', source_id=source.id) if source else url_for('admin.intelligence_sources') }}" class="bg-white border border-gray-300 text-gray-700 px-5 py-2 rounded-lg hover:bg-gray-50 transition">Cancel</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

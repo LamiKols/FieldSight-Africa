@@ -203,6 +203,74 @@ INTELLIGENCE_INSIGHT_PUBLISHING_CANDIDATE_STATUSES = [
     "blocked",
 ]
 
+INTELLIGENCE_SOURCE_STATUSES = [
+    "active",
+    "paused",
+    "disabled",
+    "archived",
+]
+
+INTELLIGENCE_SOURCE_CATEGORIES = [
+    "market_signal",
+    "document_intelligence",
+    "partner_update",
+    "commercial_signal",
+    "manual_research",
+]
+
+INTELLIGENCE_SOURCE_TRUST_LEVELS = [
+    "low",
+    "medium",
+    "high",
+    "verified",
+]
+
+INTELLIGENCE_SOURCE_CADENCES = [
+    "manual",
+    "daily",
+    "weekly",
+    "monthly",
+    "ad_hoc",
+]
+
+INTELLIGENCE_INGESTION_RUN_STATUSES = [
+    "queued",
+    "completed",
+    "needs_review",
+    "failed",
+    "cancelled",
+]
+
+INTELLIGENCE_CHANGE_EVENT_STATUSES = [
+    "detected",
+    "triaged",
+    "linked_to_alert",
+    "dismissed",
+]
+
+INTELLIGENCE_ALERT_STATUSES = [
+    "open",
+    "in_review",
+    "approved",
+    "rejected",
+    "archived",
+]
+
+INTELLIGENCE_PUBLICATION_CANDIDATE_STATUSES = [
+    "draft",
+    "in_review",
+    "approved",
+    "rejected",
+    "archived",
+]
+
+SUBSCRIBER_INTELLIGENCE_DIGEST_STATUSES = [
+    "draft",
+    "approved",
+    "published",
+    "archived",
+]
+
 COMMERCIAL_REQUEST_TYPES = [
     "live_intelligence",
     "api_access",
@@ -1139,6 +1207,135 @@ class IntelligenceInsight(TimestampMixin, db.Model):
     extraction_run = db.relationship('DocumentExtractionRun', backref='intelligence_insights')
     generated_by_user = db.relationship('User', foreign_keys=[generated_by_user_id], backref='generated_intelligence_insights')
     reviewed_by_user = db.relationship('User', foreign_keys=[reviewed_by_user_id], backref='reviewed_intelligence_insights')
+
+
+class IntelligenceSource(TimestampMixin, db.Model):
+    __tablename__ = 'intelligence_sources'
+
+    id = db.Column(db.Integer, primary_key=True)
+    source_code = db.Column(db.String(120), unique=True, nullable=False)
+    name = db.Column(db.String(180), nullable=False)
+    description = db.Column(db.Text)
+    category = db.Column(db.String(80), default='manual_research', nullable=False)
+    status = db.Column(db.String(50), default='active', nullable=False)
+    trust_level = db.Column(db.String(50), default='medium', nullable=False)
+    cadence = db.Column(db.String(50), default='manual', nullable=False)
+    owner_team = db.Column(db.String(120))
+    public_reference_url = db.Column(db.String(255))
+    safe_configuration_json = db.Column(db.JSON, default=dict)
+    allowed_summary_fields_json = db.Column(db.JSON, default=list)
+    last_run_at = db.Column(db.DateTime)
+    archived_at = db.Column(db.DateTime)
+    created_by_user_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+    updated_by_user_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+
+    created_by_user = db.relationship('User', foreign_keys=[created_by_user_id], backref='created_intelligence_sources')
+    updated_by_user = db.relationship('User', foreign_keys=[updated_by_user_id], backref='updated_intelligence_sources')
+
+
+class IntelligenceIngestionRun(TimestampMixin, db.Model):
+    __tablename__ = 'intelligence_ingestion_runs'
+
+    id = db.Column(db.Integer, primary_key=True)
+    source_id = db.Column(db.Integer, db.ForeignKey('intelligence_sources.id'), nullable=False)
+    generated_insight_id = db.Column(db.Integer, db.ForeignKey('intelligence_insights.id'))
+    run_type = db.Column(db.String(80), default='manual', nullable=False)
+    trigger_source = db.Column(db.String(80), default='admin_manual', nullable=False)
+    status = db.Column(db.String(50), default='queued', nullable=False)
+    safe_summary_json = db.Column(db.JSON, default=dict)
+    detected_change_count = db.Column(db.Integer, default=0)
+    generated_alert_count = db.Column(db.Integer, default=0)
+    error_message = db.Column(db.Text)
+    started_at = db.Column(db.DateTime)
+    completed_at = db.Column(db.DateTime)
+    requested_by_user_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+
+    source = db.relationship('IntelligenceSource', backref='ingestion_runs')
+    generated_insight = db.relationship('IntelligenceInsight', backref='source_ingestion_runs')
+    requested_by_user = db.relationship('User', backref='requested_intelligence_ingestion_runs')
+
+
+class IntelligenceChangeEvent(TimestampMixin, db.Model):
+    __tablename__ = 'intelligence_change_events'
+
+    id = db.Column(db.Integer, primary_key=True)
+    source_id = db.Column(db.Integer, db.ForeignKey('intelligence_sources.id'), nullable=False)
+    ingestion_run_id = db.Column(db.Integer, db.ForeignKey('intelligence_ingestion_runs.id'), nullable=False)
+    change_type = db.Column(db.String(80), default='source_snapshot', nullable=False)
+    severity = db.Column(db.String(50), default='medium', nullable=False)
+    status = db.Column(db.String(50), default='detected', nullable=False)
+    title = db.Column(db.String(255), nullable=False)
+    summary = db.Column(db.Text)
+    safe_payload_json = db.Column(db.JSON, default=dict)
+    detected_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    source = db.relationship('IntelligenceSource', backref='change_events')
+    ingestion_run = db.relationship('IntelligenceIngestionRun', backref='change_events')
+
+
+class IntelligenceAlert(TimestampMixin, db.Model):
+    __tablename__ = 'intelligence_alerts'
+
+    id = db.Column(db.Integer, primary_key=True)
+    source_id = db.Column(db.Integer, db.ForeignKey('intelligence_sources.id'), nullable=False)
+    ingestion_run_id = db.Column(db.Integer, db.ForeignKey('intelligence_ingestion_runs.id'))
+    change_event_id = db.Column(db.Integer, db.ForeignKey('intelligence_change_events.id'))
+    intelligence_insight_id = db.Column(db.Integer, db.ForeignKey('intelligence_insights.id'))
+    title = db.Column(db.String(255), nullable=False)
+    summary = db.Column(db.Text)
+    severity = db.Column(db.String(50), default='medium', nullable=False)
+    status = db.Column(db.String(50), default='open', nullable=False)
+    safe_payload_json = db.Column(db.JSON, default=dict)
+    review_notes = db.Column(db.Text)
+    reviewed_by_user_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+    reviewed_at = db.Column(db.DateTime)
+    archived_at = db.Column(db.DateTime)
+
+    source = db.relationship('IntelligenceSource', backref='alerts')
+    ingestion_run = db.relationship('IntelligenceIngestionRun', backref='alerts')
+    change_event = db.relationship('IntelligenceChangeEvent', backref='alerts')
+    intelligence_insight = db.relationship('IntelligenceInsight', backref='source_alerts')
+    reviewed_by_user = db.relationship('User', backref='reviewed_intelligence_alerts')
+
+
+class IntelligencePublicationCandidate(TimestampMixin, db.Model):
+    __tablename__ = 'intelligence_publication_candidates'
+
+    id = db.Column(db.Integer, primary_key=True)
+    intelligence_alert_id = db.Column(db.Integer, db.ForeignKey('intelligence_alerts.id'))
+    intelligence_insight_id = db.Column(db.Integer, db.ForeignKey('intelligence_insights.id'))
+    candidate_type = db.Column(db.String(80), default='subscriber_digest', nullable=False)
+    status = db.Column(db.String(50), default='draft', nullable=False)
+    title = db.Column(db.String(255), nullable=False)
+    summary = db.Column(db.Text)
+    safe_payload_json = db.Column(db.JSON, default=dict)
+    review_notes = db.Column(db.Text)
+    approved_by_user_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+    approved_at = db.Column(db.DateTime)
+    archived_at = db.Column(db.DateTime)
+
+    intelligence_alert = db.relationship('IntelligenceAlert', backref='publication_candidates')
+    intelligence_insight = db.relationship('IntelligenceInsight', backref='publication_candidates')
+    approved_by_user = db.relationship('User', backref='approved_intelligence_publication_candidates')
+
+
+class SubscriberIntelligenceDigest(TimestampMixin, db.Model):
+    __tablename__ = 'subscriber_intelligence_digests'
+
+    id = db.Column(db.Integer, primary_key=True)
+    publication_candidate_id = db.Column(db.Integer, db.ForeignKey('intelligence_publication_candidates.id'), nullable=False)
+    title = db.Column(db.String(255), nullable=False)
+    summary = db.Column(db.Text)
+    status = db.Column(db.String(50), default='approved', nullable=False)
+    safe_payload_json = db.Column(db.JSON, default=dict)
+    approved_at = db.Column(db.DateTime)
+    visible_from = db.Column(db.DateTime)
+    visible_until = db.Column(db.DateTime)
+    created_by_user_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+    archived_at = db.Column(db.DateTime)
+
+    publication_candidate = db.relationship('IntelligencePublicationCandidate', backref='subscriber_digests')
+    created_by_user = db.relationship('User', backref='created_subscriber_intelligence_digests')
 
 
 class DocumentReview(TimestampMixin, db.Model):
