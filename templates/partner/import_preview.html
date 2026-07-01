@@ -9,9 +9,11 @@
             <a href="{{ url_for('partner.imports') }}" class="text-primary hover:underline text-sm">&larr; Back to Imports</a>
             <h1 class="text-3xl font-bold text-gray-900 mt-3">Import Preview</h1>
             <p class="text-gray-600 mt-1">{{ batch.title }} | {{ batch.status|replace('_', ' ')|title }}</p>
+            <p class="text-sm text-gray-500 mt-1">Use this preview to explain validation, correction, and review before any trusted data reaches subscribers.</p>
         </div>
         <div class="flex flex-wrap gap-3">
             <a href="{{ url_for('partner.import_errors_csv', batch_id=batch.id) }}" class="px-5 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50">Download Error CSV</a>
+            <a href="{{ url_for('partner.actor_update_invitations') }}" class="px-5 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50">Actor Invitations</a>
             {% if batch.status == 'draft' and can_submit and summary.valid_rows %}
             <form method="POST" action="{{ url_for('partner.submit_import', batch_id=batch.id) }}">
                 <button type="submit" class="bg-primary text-white px-5 py-2 rounded-lg hover:bg-secondary">Submit Valid Rows</button>
@@ -41,6 +43,14 @@
         <div class="p-6 border-b">
             <h2 class="text-xl font-semibold text-gray-900">Row-Level Validation</h2>
             <p class="text-sm text-gray-600 mt-1">Contact values are not shown here; if a create row is accepted, phone/email values are kept only in restricted contact records.</p>
+            {% if summary.rejected_rows %}
+            <p class="text-sm text-amber-700 mt-2">Error CSV is available for rejected rows so the partner can correct issues without exposing restricted contact details.</p>
+            {% else %}
+            <p class="text-sm text-emerald-700 mt-2">No validation errors were found. Valid rows can move into admin review when submitted.</p>
+            {% endif %}
+            {% if batch.status == 'submitted' %}
+            <p class="text-sm text-blue-700 mt-2">This import is awaiting admin review. Submission does not publish subscriber data or grant buyer access.</p>
+            {% endif %}
         </div>
         <div class="overflow-x-auto">
             <table class="w-full">
@@ -74,6 +84,13 @@
                             {% if not payload.get('errors') and not payload.get('warnings') %}
                             <span class="text-emerald-700">Ready for admin review</span>
                             {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="6" class="px-6 py-10 text-center">
+                            <p class="font-medium text-gray-900">No rows were parsed for this import.</p>
+                            <p class="text-sm text-gray-600 mt-1">Upload a registry spreadsheet with actor names, commodity/category, location, and verification metadata to continue the demo.</p>
                         </td>
                     </tr>
                     {% endfor %}

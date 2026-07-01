@@ -59,6 +59,9 @@ DEMO_PARTNER_SLUG = "demo-sahel-produce-network"
 DEMO_ACTOR_PUBLIC_ID = "demo-actor-sahel-0001"
 DEMO_DOCUMENT_TITLE = "Demo Certificate Of Origin Metadata"
 DEMO_IMPORT_TITLE = "Demo Monthly Live Actor Registry Import"
+DEMO_PENDING_IMPORT_TITLE = "Demo Pending Kano Grain Registry Import"
+DEMO_SUCCESS_IMPORT_TITLE = "Demo Successful Oyo Cassava Registry Import"
+DEMO_ERROR_IMPORT_TITLE = "Demo Error Benue Soybean Registry Import"
 
 
 def utcnow():
@@ -102,6 +105,46 @@ def get_or_create_partner():
     return partner
 
 
+def get_or_create_named_partner(name, slug, description, status="active"):
+    partner = PartnerOrganization.query.filter_by(slug=slug).first()
+    if not partner:
+        partner = PartnerOrganization(
+            name=name,
+            slug=slug,
+            country="Nigeria",
+        )
+        db.session.add(partner)
+    partner.name = name
+    partner.description = description
+    partner.status = status
+    partner.contact_name = None
+    partner.contact_email = None
+    partner.contact_phone = None
+    db.session.flush()
+    return partner
+
+
+def seed_demo_partner_organizations():
+    return [
+        get_or_create_named_partner(
+            "Kano Grain Cooperative",
+            "demo-kano-grain-cooperative",
+            "Synthetic grain cooperative used to explain partner-owned registry updates.",
+        ),
+        get_or_create_named_partner(
+            "Oyo Cassava Aggregators Network",
+            "demo-oyo-cassava-aggregators-network",
+            "Synthetic cassava aggregation network used for successful import demos.",
+        ),
+        get_or_create_named_partner(
+            "Benue Soybean Producers Association",
+            "demo-benue-soybean-producers-association",
+            "Synthetic producer association used for validation-error walkthroughs.",
+            status="pending",
+        ),
+    ]
+
+
 def get_or_create_partner_profile(user, partner, partner_role="partner_admin"):
     profile = PartnerUserProfile.query.filter_by(
         user_id=user.id,
@@ -126,6 +169,18 @@ def first_or_create_crop():
     if crop:
         return crop
     crop = Crop(code="ginger", name="Ginger", active=True)
+    db.session.add(crop)
+    db.session.flush()
+    return crop
+
+
+def first_or_create_named_crop(name):
+    code = name.lower().replace(" ", "_")
+    crop = Crop.query.filter_by(name=name).first()
+    if crop:
+        crop.active = True
+        return crop
+    crop = Crop(code=code, name=name, active=True)
     db.session.add(crop)
     db.session.flush()
     return crop
@@ -266,6 +321,114 @@ def seed_actor_registry(admin, partner):
     constraint.status = "active"
     db.session.flush()
     return actor
+
+
+def ensure_demo_actor(admin, partner, public_id, name, actor_type, crop_name, status, metadata=None):
+    crop = first_or_create_named_crop(crop_name)
+    region = first_or_create_region()
+    actor = MarketActor.query.filter_by(public_id=public_id).first()
+    if not actor:
+        actor = MarketActor(
+            public_id=public_id,
+            created_by_user_id=admin.id,
+            source_reference_type="demo_seed",
+            source_reference="partner-onboarding-demo-polish",
+        )
+        db.session.add(actor)
+    actor.partner_organization_id = partner.id
+    actor.updated_by_id = admin.id
+    actor.actor_type = actor_type
+    actor.name = name
+    actor.crop_id = crop.id
+    actor.commodity_category = crop_name
+    actor.registration_status = "demo_registered" if status == "active" else "demo_pending"
+    actor.status = status
+    actor.archived_at = None
+    actor.metadata_json = {
+        **(actor.metadata_json or {}),
+        "synthetic_demo_record": True,
+        "real_contact_details": False,
+        "data_freshness_date": (utcnow().date() - timedelta(days=6)).isoformat(),
+        "last_verified_date": (utcnow().date() - timedelta(days=4)).isoformat(),
+        "update_source": "demo_partner_registry_refresh",
+        "update_cycle": "monthly",
+        "partner_notes": "Synthetic actor used for partner onboarding demo polish.",
+        "partner_maintained_record": True,
+        "actor_confirmed_record": bool((metadata or {}).get("actor_confirmed_record")),
+        "subscriber_safe": status == "active",
+        **(metadata or {}),
+    }
+    db.session.flush()
+
+    location = ActorLocation.query.filter_by(market_actor_id=actor.id).first()
+    if not location:
+        location = ActorLocation(market_actor_id=actor.id)
+        db.session.add(location)
+    location.region_id = region.id
+    location.location_text = "Synthetic aggregation corridor"
+    location.location = "Synthetic aggregation corridor"
+    location.country = "Nigeria"
+    location.is_primary = True
+
+    export_profile = ActorExportProfile.query.filter_by(market_actor_id=actor.id).first()
+    if not export_profile:
+        export_profile = ActorExportProfile(market_actor_id=actor.id)
+        db.session.add(export_profile)
+    export_profile.years_in_export_trade = 2 if status != "active" else 5
+    export_profile.trade_destination_name = "Synthetic buyer market"
+    export_profile.export_capacity = "Synthetic monthly volume"
+    export_profile.export_capacity_unit = "metric_tonnes"
+    export_profile.port_of_exit = "Synthetic Lagos export corridor"
+    export_profile.notes = "Demo-only export profile; no direct buyer or contact details."
+    db.session.flush()
+    return actor
+
+
+def seed_additional_actor_registry(admin, partner):
+    invitation_actor = ensure_demo_actor(
+        admin,
+        partner,
+        "demo-actor-kaduna-maize-0002",
+        "Kaduna Maize Export Cluster",
+        "exporter",
+        "Maize",
+        "pending_review",
+        metadata={
+            "actor_update_invitation": {
+                "status": "sent",
+                "purpose": "Confirm export capacity and certification readiness",
+                "invited_at": (utcnow().date() - timedelta(days=2)).isoformat(),
+                "review_note": "Synthetic invitation only; no contact channel stored or rendered.",
+            },
+        },
+    )
+    ensure_demo_actor(
+        admin,
+        partner,
+        "demo-actor-ogun-cocoa-0003",
+        "Ogun Cocoa Aggregation Hub",
+        "aggregator",
+        "Cocoa",
+        "needs_correction",
+        metadata={
+            "partner_notes": "Synthetic correction scenario for missing certification evidence.",
+            "actor_confirmed_record": False,
+        },
+    )
+    ensure_demo_actor(
+        admin,
+        partner,
+        "demo-actor-oyo-cassava-0004",
+        "Oyo Cassava Aggregators Network",
+        "cooperative",
+        "Cassava",
+        "active",
+        metadata={
+            "partner_notes": "Synthetic approved actor for subscriber trusted-data walkthrough.",
+            "actor_confirmed_record": True,
+        },
+    )
+    return invitation_actor
 
 
 def seed_document_and_requests(admin, subscriber, partner, actor):
@@ -549,21 +712,55 @@ def seed_commercial_requests(subscriber):
     return created
 
 
-def seed_partner_import_demo(partner_user, partner):
+def ensure_import_scenario(partner_user, partner, title, raw_rows, defaults, status="draft", admin=None, review_comments=None):
     existing = PartnerUpdateBatch.query.filter_by(
         partner_organization_id=partner.id,
-        title=DEMO_IMPORT_TITLE,
+        title=title,
     ).first()
     if existing and is_import_batch(existing):
-        return import_batch_summary(existing)
+        batch = existing
+    else:
+        batch = create_import_batch_from_rows(
+            partner.id,
+            partner_user.id,
+            raw_rows,
+            title,
+            reporting_month=utcnow().strftime("%Y-%m"),
+            defaults=defaults,
+        )
 
-    raw_rows = [
+    batch.status = status
+    if status in {"submitted", "reviewed"}:
+        batch.submitted_by_user_id = partner_user.id
+        batch.submitted_at = batch.submitted_at or utcnow()
+        for change in batch.record_changes:
+            if (change.after_values or {}).get("row_status") != "invalid":
+                change.status = "submitted" if status == "submitted" else "reviewed"
+            else:
+                change.status = "needs_correction"
+    if admin and review_comments:
+        batch.reviewed_by_user_id = admin.id
+        batch.reviewed_at = batch.reviewed_at or utcnow()
+        batch.review_comments = review_comments
+    db.session.flush()
+    return batch
+
+
+def seed_partner_import_demo(partner_user, partner, admin=None):
+    common_defaults = {
+        "data_freshness_date": utcnow().date().isoformat(),
+        "last_verified_date": utcnow().date().isoformat(),
+        "update_source": "demo_partner_bulk_upload",
+        "update_cycle": "monthly",
+        "partner_notes": "Synthetic owner onboarding import with safe demo records.",
+    }
+    mixed_rows = [
         {
             "COMMODITY CATEGORY": "Ginger",
             "FARMER/AGGREAGATOR": "Demo Fresh Ginger Aggregator",
             "LOCATION": "Demo aggregation zone B",
             "STATE": "Lagos",
-            "PHONE": "+2340000000000",
+            "PHONE": "",
             "EMAIL": "actor-contact@fieldsight-demo.invalid",
             "LGA": "Ikeja",
             "REGISTRATION STATUS": "registered",
@@ -610,21 +807,110 @@ def seed_partner_import_demo(partner_user, partner):
             "CONSTRAINT": "Potential update candidate for existing actor",
         },
     ]
-    batch = create_import_batch_from_rows(
-        partner.id,
-        partner_user.id,
-        raw_rows,
-        DEMO_IMPORT_TITLE,
-        reporting_month=utcnow().strftime("%Y-%m"),
-        defaults={
-            "data_freshness_date": utcnow().date().isoformat(),
-            "last_verified_date": utcnow().date().isoformat(),
-            "update_source": "demo_partner_bulk_upload",
-            "update_cycle": "monthly",
-            "partner_notes": "Synthetic owner onboarding import with valid, rejected, and update candidate rows.",
+    pending_rows = [
+        {
+            "COMMODITY CATEGORY": "Maize",
+            "FARMER/AGGREAGATOR": "Kano Grain Cooperative",
+            "LOCATION": "Synthetic northern aggregation corridor",
+            "STATE": "Kano",
+            "PHONE": "",
+            "EMAIL": "kano-grain-demo@fieldsight-demo.invalid",
+            "LGA": "",
+            "REGISTRATION STATUS": "registered",
+            "DATE OF REGISTRATION": "2026-05-18",
+            "NUMBER OF YEARS IN EXPORT TRADE": "6",
+            "TRADE DESTINATION": "Synthetic regional buyer network",
+            "EXPORT CAPACITY": "40 metric tonnes monthly",
+            "ERTIFICATION": "Demo warehouse readiness",
+            "PORT OF EXIT": "Synthetic inland dry port corridor",
+            "CONSTRAINT": "Requires periodic stock verification",
         },
-    )
-    return import_batch_summary(batch)
+    ]
+    success_rows = [
+        {
+            "COMMODITY CATEGORY": "Cassava",
+            "FARMER/AGGREAGATOR": "Oyo Cassava Aggregators Network",
+            "LOCATION": "Synthetic cassava belt",
+            "STATE": "Oyo",
+            "PHONE": "",
+            "EMAIL": "oyo-cassava-demo@fieldsight-demo.invalid",
+            "LGA": "",
+            "REGISTRATION STATUS": "registered",
+            "DATE OF REGISTRATION": "2026-04-11",
+            "NUMBER OF YEARS IN EXPORT TRADE": "5",
+            "TRADE DESTINATION": "Synthetic food processor market",
+            "EXPORT CAPACITY": "60 metric tonnes monthly",
+            "ERTIFICATION": "Demo quality readiness",
+            "PORT OF EXIT": "Synthetic Lagos produce corridor",
+            "CONSTRAINT": "Monitor moisture quality during rainy season",
+        },
+    ]
+    error_rows = [
+        {
+            "COMMODITY CATEGORY": "Soybean",
+            "FARMER/AGGREAGATOR": "Benue Soybean Producers Association",
+            "LOCATION": "Synthetic soybean aggregation zone",
+            "STATE": "Benue",
+            "PHONE": "",
+            "EMAIL": "",
+            "LGA": "",
+            "REGISTRATION STATUS": "pending",
+            "DATE OF REGISTRATION": "bad-date",
+            "NUMBER OF YEARS IN EXPORT TRADE": "not numeric",
+            "TRADE DESTINATION": "Synthetic buyer desk",
+            "EXPORT CAPACITY": "20 metric tonnes monthly",
+            "ERTIFICATION": "Demo certificate pending",
+            "PORT OF EXIT": "Synthetic port corridor",
+            "CONSTRAINT": "Date and trade-history fields need correction",
+        },
+        {
+            "COMMODITY CATEGORY": "Soybean",
+            "FARMER/AGGREAGATOR": "",
+            "LOCATION": "Synthetic missing actor zone",
+            "STATE": "Benue",
+            "PHONE": "",
+            "EMAIL": "",
+            "LGA": "",
+            "REGISTRATION STATUS": "pending",
+            "DATE OF REGISTRATION": "2026-06-20",
+            "NUMBER OF YEARS IN EXPORT TRADE": "1",
+            "TRADE DESTINATION": "Synthetic buyer desk",
+            "EXPORT CAPACITY": "10 metric tonnes monthly",
+            "ERTIFICATION": "Demo certificate pending",
+            "PORT OF EXIT": "Synthetic port corridor",
+            "CONSTRAINT": "Actor name required",
+        },
+    ]
+
+    batches = [
+        ensure_import_scenario(partner_user, partner, DEMO_IMPORT_TITLE, mixed_rows, common_defaults, status="draft"),
+        ensure_import_scenario(partner_user, partner, DEMO_PENDING_IMPORT_TITLE, pending_rows, common_defaults, status="draft"),
+        ensure_import_scenario(
+            partner_user,
+            partner,
+            DEMO_SUCCESS_IMPORT_TITLE,
+            success_rows,
+            {**common_defaults, "partner_notes": "Synthetic successful import ready for admin review demo."},
+            status="submitted",
+            admin=admin,
+            review_comments="Synthetic admin review scenario: valid rows accepted for governed registry use. No subscriber access was created.",
+        ),
+        ensure_import_scenario(
+            partner_user,
+            partner,
+            DEMO_ERROR_IMPORT_TITLE,
+            error_rows,
+            {**common_defaults, "partner_notes": "Synthetic validation-error import for correction and error CSV demo."},
+            status="draft",
+        ),
+    ]
+    summaries = [import_batch_summary(batch) for batch in batches]
+    return {
+        "total_batches": len(batches),
+        "total_rows": sum(summary["total_rows"] for summary in summaries),
+        "rejected_rows": sum(summary["rejected_rows"] for summary in summaries),
+        "created_actors": sum(summary["created_actors"] for summary in summaries),
+    }
 
 
 def seed_demo_data(commit=True):
@@ -632,12 +918,14 @@ def seed_demo_data(commit=True):
     subscriber = get_or_create_user("Demo Subscriber", DEMO_SUBSCRIBER_EMAIL, "subscriber")
     partner_user = get_or_create_user("Demo Partner Owner", DEMO_PARTNER_EMAIL, "subscriber")
     partner = get_or_create_partner()
+    seed_demo_partner_organizations()
     get_or_create_partner_profile(partner_user, partner)
     actor = seed_actor_registry(admin, partner)
+    invitation_actor = seed_additional_actor_registry(admin, partner)
     document = seed_document_and_requests(admin, subscriber, partner, actor)
     intelligence_summary = seed_intelligence(admin)
     commercial_created = seed_commercial_requests(subscriber)
-    partner_import_summary = seed_partner_import_demo(partner_user, partner)
+    partner_import_summary = seed_partner_import_demo(partner_user, partner, admin=admin)
 
     if commit:
         db.session.commit()
@@ -648,9 +936,12 @@ def seed_demo_data(commit=True):
         "partner_user": partner_user.email,
         "partner": partner.slug,
         "actor_public_id": actor.public_id,
+        "actor_update_invitation": invitation_actor.public_id,
         "document_id": document.id,
         "commercial_requests_created": commercial_created,
         "partner_import_rows": partner_import_summary["total_rows"],
+        "partner_import_batches": partner_import_summary["total_batches"],
+        "partner_import_rejected_rows": partner_import_summary["rejected_rows"],
         **intelligence_summary,
     }
 

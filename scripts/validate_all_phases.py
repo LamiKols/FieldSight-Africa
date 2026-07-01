@@ -29,6 +29,7 @@ VALIDATION_SCRIPTS = [
     "scripts/validate_intelligence_engine_release_1.py",
     "scripts/validate_commercial_demo_launch_readiness.py",
     "scripts/validate_partner_data_owner_onboarding.py",
+    "scripts/validate_partner_onboarding_demo_polish.py",
 ]
 
 

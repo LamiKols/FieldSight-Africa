@@ -12,6 +12,7 @@
         </div>
         <div class="flex flex-wrap gap-3">
             <a href="{{ url_for('partner.onboarding') }}" class="px-5 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50">How It Works</a>
+            <a href="{{ url_for('partner.imports') }}" class="px-5 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50">Import Batches</a>
             {% if can_edit %}
             <a href="{{ url_for('partner.new_actor') }}" class="px-5 py-2 rounded-lg bg-primary text-white hover:bg-secondary">Add Single Actor</a>
             {% endif %}
@@ -20,7 +21,7 @@
 
     <section class="rounded-xl bg-blue-50 border border-blue-200 p-5 mb-8 text-sm text-blue-900">
         <h2 class="font-semibold text-blue-950 mb-2">How continuous registry updates work</h2>
-        <p>Partner-Maintained Records are refreshed through single actor entry and bulk spreadsheet imports. Actor-Confirmed Records can later be invited to confirm details. Admin-Reviewed Records become Subscriber-Safe Intelligence only after governance review, so subscription access reflects current, reviewed data rather than a stale extract.</p>
+        <p>Partner-Maintained Records are refreshed through single actor entry and bulk spreadsheet imports. Actor-Confirmed Records can later be invited to confirm details. Admin-Reviewed Records become Subscriber-Safe Intelligence only after governance review, so subscription access reflects current, reviewed data without exposing restricted direct-contact fields.</p>
     </section>
 
     <div class="grid md:grid-cols-4 gap-6 mb-8">

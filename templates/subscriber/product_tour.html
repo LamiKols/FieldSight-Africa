@@ -7,14 +7,19 @@
     <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4 mb-8">
         <div>
             <h1 class="text-3xl font-bold text-gray-900">Product Tour</h1>
-            <p class="text-gray-600 mt-1">A guided view of your governed data, API, document request, and intelligence digest surfaces.</p>
+            <p class="text-gray-600 mt-1">A guided buyer view of governed, confidence-scored agricultural intelligence created from reviewed partner, document, and market signals.</p>
         </div>
         <a href="{{ url_for('subscriber.my_access') }}" class="px-5 py-2 rounded-lg bg-primary text-white hover:bg-secondary">My Access</a>
     </div>
 
     <div class="rounded-xl bg-blue-50 border border-blue-200 p-5 mb-6 text-sm text-blue-800">
-        Product tour pages explain available surfaces and request paths. They do not grant paid entitlements, expose files, reveal private paths, or bypass consent, review, redaction, publish-readiness, entitlement, or API safety gates.
+        Product tour pages explain available surfaces and request paths. They do not grant paid entitlements, expose files, reveal private paths, expose restricted contact fields, or bypass consent, review, redaction, publish-readiness, entitlement, or API safety gates.
     </div>
+
+    <section class="rounded-xl bg-emerald-50 border border-emerald-200 p-5 mb-6 text-sm text-emerald-900">
+        <h2 class="font-semibold text-emerald-950 mb-2">Trusted Data Story</h2>
+        <p>Partners contribute structured farmer, exporter, aggregator, and cooperative records. FieldSight validates and governs those records before buyers/subscribers see safe metadata, market intelligence, or controlled request paths.</p>
+    </section>
 
     <section class="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
         {% for step in tour_steps %}
