@@ -7,7 +7,7 @@
     <div class="mb-8">
         <a href="{{ url_for('admin.dashboard') }}" class="text-primary hover:underline text-sm">&larr; Back to Admin Dashboard</a>
         <h1 class="text-3xl font-bold text-gray-900 mt-3">Partner Registry Imports</h1>
-        <p class="text-gray-600 mt-1">Admin view of bulk Live Actor Registry updates submitted by data owner organizations.</p>
+        <p class="text-gray-600 mt-1">Admin view of bulk Live Actor Registry updates submitted by data owner organizations before trusted data becomes commercial-ready.</p>
     </div>
 
     <div class="bg-white rounded-xl shadow-sm border overflow-hidden">
@@ -41,7 +41,11 @@
                     </tr>
                     {% else %}
                     <tr>
-                        <td colspan="7" class="px-5 py-8 text-center text-sm text-gray-500">No partner imports are available.</td>
+                        <td colspan="7" class="px-5 py-10 text-center">
+                            <p class="font-medium text-gray-900">No partner imports are awaiting review.</p>
+                            <p class="text-sm text-gray-600 mt-1">When partners submit validated spreadsheets, this queue shows the status, rejected rows, duplicates, and created actor records without exposing restricted contact values.</p>
+                            <a href="{{ url_for('admin.partner_organizations') }}" class="inline-block mt-4 text-primary hover:underline">View partner organizations</a>
+                        </td>
                     </tr>
                     {% endfor %}
                 </tbody>

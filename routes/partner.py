@@ -1713,7 +1713,10 @@ def new_import():
             organization_id=profile.partner_organization_id,
         )
         db.session.commit()
-        flash("Spreadsheet imported for preview. Review warnings and corrections before submitting.", "success")
+        flash(
+            "Spreadsheet imported for preview. Review warnings, download the error CSV if needed, and submit only validated rows for admin review.",
+            "success",
+        )
         return redirect(url_for("partner.import_preview", batch_id=batch.id))
 
     return render_template(
@@ -1781,7 +1784,10 @@ def submit_import(batch_id):
         organization_id=profile.partner_organization_id,
     )
     db.session.commit()
-    flash(message, "success")
+    flash(
+        f"{message} The import is awaiting admin review before any buyer/subscriber-facing use.",
+        "success",
+    )
     return redirect(url_for("partner.import_detail", batch_id=batch.id))
 
 
@@ -1804,10 +1810,29 @@ def import_errors_csv(batch_id):
 @require_partner_user
 def actor_update_invitations():
     profile = get_current_partner_profile()
+    actors = (
+        MarketActor.query
+        .filter_by(partner_organization_id=profile.partner_organization_id)
+        .order_by(MarketActor.updated_at.desc(), MarketActor.id.desc())
+        .limit(25)
+        .all()
+    )
+    invitations = []
+    for actor in actors:
+        invitation = (actor.metadata_json or {}).get("actor_update_invitation")
+        if invitation:
+            invitations.append({
+                "actor": actor,
+                "status": invitation.get("status") or "draft",
+                "purpose": invitation.get("purpose") or "Confirm registry details",
+                "invited_at": invitation.get("invited_at"),
+                "review_note": invitation.get("review_note"),
+            })
     return render_template(
         "partner/actor_update_invitations.html",
         profile=profile,
         organization=profile.partner_organization,
+        invitations=invitations,
     )
 
 

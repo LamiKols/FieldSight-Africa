@@ -15,6 +15,18 @@
         {% endif %}
     </div>
 
+    {% if batch.status == 'submitted' %}
+    <section class="rounded-xl bg-blue-50 border border-blue-200 p-5 mb-8 text-sm text-blue-900">
+        <h2 class="font-semibold text-blue-950 mb-2">Awaiting Admin Review</h2>
+        <p>This import has been submitted by the data owner. Review row-level warnings, rejected rows, duplicate candidates, and created actor records before any downstream subscriber, buyer, API, or intelligence use.</p>
+    </section>
+    {% elif batch.status == 'draft' %}
+    <section class="rounded-xl bg-amber-50 border border-amber-200 p-5 mb-8 text-sm text-amber-900">
+        <h2 class="font-semibold text-amber-950 mb-2">Partner Preview In Progress</h2>
+        <p>The partner can still review the preview, download error CSV output, and submit valid rows. Draft imports are not commercial-ready.</p>
+    </section>
+    {% endif %}
+
     <div class="grid md:grid-cols-4 lg:grid-cols-7 gap-4 mb-8">
         {% for label, value in [
             ('Total Rows', summary.total_rows),
@@ -48,12 +60,18 @@
                 <p class="font-medium text-gray-900">{{ summary.freshness_summary.latest_last_verified_date or 'Not set' }}</p>
             </div>
         </div>
+        {% if batch.review_comments %}
+        <div class="mt-5 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
+            <p class="font-medium text-emerald-950">Admin Review Scenario</p>
+            <p class="mt-1">{{ batch.review_comments }}</p>
+        </div>
+        {% endif %}
     </section>
 
     <section class="bg-white rounded-xl shadow-sm border overflow-hidden">
         <div class="p-6 border-b">
             <h2 class="text-xl font-semibold text-gray-900">Import Rows</h2>
-            <p class="text-sm text-gray-600 mt-1">Admin review summary excludes restricted phone/email values and uploaded file paths.</p>
+            <p class="text-sm text-gray-600 mt-1">Admin review summary excludes restricted phone/email values and uploaded file paths. Created actors remain governed market participant records until review and publication controls allow downstream use.</p>
         </div>
         <div class="overflow-x-auto">
             <table class="w-full">

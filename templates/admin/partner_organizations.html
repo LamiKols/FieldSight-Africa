@@ -7,7 +7,7 @@
     <div class="mb-8">
         <a href="{{ url_for('admin.dashboard') }}" class="text-primary hover:underline text-sm">&larr; Back to Admin Dashboard</a>
         <h1 class="text-3xl font-bold text-gray-900 mt-3">Partner Organizations</h1>
-        <p class="text-gray-600 mt-1">Data owner organizations maintaining the Live Actor Registry.</p>
+        <p class="text-gray-600 mt-1">Data owner organizations maintaining the Live Actor Registry for governed commercial intelligence.</p>
     </div>
 
     <div class="bg-white rounded-xl shadow-sm border overflow-hidden">
@@ -36,7 +36,11 @@
                 </tr>
                 {% else %}
                 <tr>
-                    <td colspan="5" class="px-5 py-8 text-center text-sm text-gray-500">No partner organizations are available.</td>
+                    <td colspan="5" class="px-5 py-10 text-center">
+                        <p class="font-medium text-gray-900">No partner organizations are available yet.</p>
+                        <p class="text-sm text-gray-600 mt-1">Seed demo data or onboard a data owner to demonstrate how partner-maintained actor records enter FieldSight governance.</p>
+                        <a href="{{ url_for('admin.partner_imports') }}" class="inline-block mt-4 text-primary hover:underline">View partner import queue</a>
+                    </td>
                 </tr>
                 {% endfor %}
             </tbody>

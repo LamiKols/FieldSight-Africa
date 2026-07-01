@@ -10,7 +10,10 @@
 
     <div class="bg-white rounded-xl shadow-sm border p-8">
         <h1 class="text-2xl font-bold text-gray-900 mb-2">Bulk Upload Spreadsheet</h1>
-        <p class="text-sm text-gray-600 mb-6">Upload a CSV or XLSX export from the owner registry template. The upload is parsed for preview; no uploaded file path is stored or shown.</p>
+        <p class="text-sm text-gray-600 mb-4">Upload a CSV or XLSX export from the owner registry template. The upload is parsed for preview; no uploaded file path is stored or shown.</p>
+        <div class="rounded-lg bg-amber-50 border border-amber-200 p-4 text-sm text-amber-900 mb-6">
+            FieldSight validates rows before submission. Error CSV downloads help partners correct missing names, date issues, and duplicate warnings without exposing restricted phone or email values.
+        </div>
 
         <form method="POST" enctype="multipart/form-data" class="space-y-6">
             <div>
@@ -60,6 +63,7 @@
                 <input type="file" name="import_file" id="import_file" accept=".csv,.txt,.xlsx" required
                        class="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-primary focus:border-transparent">
                 <p class="text-xs text-gray-500 mt-2">Supported template columns include COMMODITY CATEGORY, FARMER/AGGREAGATOR, LOCATION, STATE, PHONE, EMAIL, LGA, REGISTRATION STATUS, DATE OF REGISTRATION, NUMBER OF YEARS IN EXPORT TRADE, TRADE DESTINATION, EXPORT CAPACITY, ERTIFICATION, PORT OF EXIT, and CONSTRAINT.</p>
+                <p class="text-xs text-gray-500 mt-1">Demo examples: Kano Grain Cooperative, Oyo Cassava Aggregators Network, Kaduna Maize Export Cluster, Benue Soybean Producers Association.</p>
             </div>
             <button type="submit" class="w-full bg-primary text-white py-3 px-4 rounded-lg font-semibold hover:bg-secondary transition">
                 Preview Import

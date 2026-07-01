@@ -8,12 +8,17 @@
         <div>
             <a href="{{ url_for('partner.dashboard') }}" class="text-primary hover:underline text-sm">&larr; Back to Partner Dashboard</a>
             <h1 class="text-3xl font-bold text-gray-900 mt-3">Live Actor Registry Imports</h1>
-            <p class="text-gray-600 mt-1">Preview bulk spreadsheet rows, fix corrections, and submit valid rows for admin review.</p>
+            <p class="text-gray-600 mt-1">Preview partner-owned farmer, exporter, and aggregator rows; fix validation issues; and submit trusted records into admin governance.</p>
         </div>
         {% if can_edit %}
         <a href="{{ url_for('partner.new_import') }}" class="bg-primary text-white px-5 py-2 rounded-lg hover:bg-secondary">Bulk Upload Spreadsheet</a>
         {% endif %}
     </div>
+
+    <section class="rounded-xl bg-blue-50 border border-blue-200 p-5 mb-6 text-sm text-blue-900">
+        <h2 class="font-semibold text-blue-950 mb-2">Demo Flow</h2>
+        <p>Each import stays in preview until validated rows are submitted. Restricted contact fields are never shown in this table; FieldSight keeps them protected while turning partner updates into governed, confidence-scored market participant records.</p>
+    </section>
 
     <div class="bg-white rounded-xl shadow-sm border overflow-hidden">
         <div class="overflow-x-auto">
@@ -44,7 +49,13 @@
                     </tr>
                     {% else %}
                     <tr>
-                        <td colspan="6" class="px-5 py-8 text-center text-gray-500">No import batches yet.</td>
+                        <td colspan="6" class="px-5 py-10 text-center">
+                            <p class="font-medium text-gray-900">No partner registry imports yet.</p>
+                            <p class="text-sm text-gray-600 mt-1">Start a bulk spreadsheet preview to demonstrate how FieldSight validates owner-contributed market participant data before admin review.</p>
+                            {% if can_edit %}
+                            <a href="{{ url_for('partner.new_import') }}" class="inline-block mt-4 px-5 py-2 rounded-lg bg-primary text-white hover:bg-secondary">Create Demo Import</a>
+                            {% endif %}
+                        </td>
                     </tr>
                     {% endfor %}
                 </tbody>
