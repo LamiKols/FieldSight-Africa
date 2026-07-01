@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+
+{% block title %}Partner Organization - FieldSight Africa{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4 mb-8">
+        <div>
+            <a href="{{ url_for('admin.partner_organizations') }}" class="text-primary hover:underline text-sm">&larr; Back to Partner Organizations</a>
+            <h1 class="text-3xl font-bold text-gray-900 mt-3">{{ organization.name }}</h1>
+            <p class="text-gray-600 mt-1">{{ organization.description or 'Data owner organization' }}</p>
+        </div>
+        <a href="{{ url_for('admin.partner_organization_users', organization_id=organization.id) }}" class="px-5 py-2 rounded-lg bg-primary text-white hover:bg-secondary">View Users</a>
+    </div>
+
+    <div class="grid lg:grid-cols-2 gap-6">
+        <section class="bg-white rounded-xl shadow-sm border p-6">
+            <h2 class="text-xl font-semibold text-gray-900 mb-5">Recent Actor Records</h2>
+            <div class="space-y-3">
+                {% for actor in actors %}
+                <div class="rounded-lg border border-gray-200 p-4">
+                    <p class="font-medium text-gray-900">{{ actor.name }}</p>
+                    <p class="text-sm text-gray-600">{{ actor.actor_type|replace('_', ' ')|title }} | {{ actor.status|replace('_', ' ')|title }}</p>
+                </div>
+                {% else %}
+                <p class="text-sm text-gray-600">No actors are available for this organization.</p>
+                {% endfor %}
+            </div>
+        </section>
+
+        <section class="bg-white rounded-xl shadow-sm border p-6">
+            <h2 class="text-xl font-semibold text-gray-900 mb-5">Import Batches</h2>
+            <div class="space-y-3">
+                {% for batch in import_batches %}
+                {% set summary = import_summaries[batch.id] %}
+                <a href="{{ url_for('admin.partner_import_detail', batch_id=batch.id) }}" class="block rounded-lg border border-gray-200 p-4 hover:border-primary">
+                    <p class="font-medium text-gray-900">{{ batch.title }}</p>
+                    <p class="text-sm text-gray-600">{{ batch.status|replace('_', ' ')|title }} | {{ summary.total_rows }} rows | {{ summary.rejected_rows }} rejected</p>
+                </a>
+                {% else %}
+                <p class="text-sm text-gray-600">No import batches are available for this organization.</p>
+                {% endfor %}
+            </div>
+        </section>
+    </div>
+</div>
+{% endblock %}

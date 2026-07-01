@@ -8,7 +8,7 @@ from datetime import datetime
 from functools import wraps
 from pathlib import Path
 
-from flask import Blueprint, abort, current_app, flash, redirect, render_template, request, send_file, url_for
+from flask import Blueprint, Response, abort, current_app, flash, redirect, render_template, request, send_file, url_for
 from flask_login import current_user, login_required
 from werkzeug.utils import secure_filename
 
@@ -62,6 +62,14 @@ from models import (
     consent_document_category_for_document_type,
     get_active_actor_consent,
     db,
+)
+from routes.partner_imports import (
+    create_import_batch_from_upload,
+    error_csv_for_import_batch,
+    import_batch_rows,
+    import_batch_summary,
+    is_import_batch,
+    submit_import_batch,
 )
 
 partner_bp = Blueprint("partner", __name__, url_prefix="/partner")
@@ -805,6 +813,8 @@ def parse_actor_form(profile):
     commodity_category = clean_form_value("commodity_category")
     source_reference = clean_form_value("source_reference")
     date_of_registration = parse_optional_date("date_of_registration", "Date of registration", errors)
+    data_freshness_date = parse_optional_date("data_freshness_date", "Data freshness date", errors)
+    last_verified_date = parse_optional_date("last_verified_date", "Last verified date", errors)
     crop_id = parse_optional_int("crop_id", "Crop", errors)
     commodity_id = parse_optional_int("commodity_id", "Commodity", errors)
     region_id = parse_optional_int("region_id", "Region", errors)
@@ -890,6 +900,11 @@ def parse_actor_form(profile):
         "commodity_category": commodity_category or (crop.name if crop else None),
         "source_reference": source_reference or None,
         "date_of_registration": date_of_registration,
+        "data_freshness_date": data_freshness_date,
+        "last_verified_date": last_verified_date,
+        "update_source": clean_form_value("update_source") or None,
+        "update_cycle": clean_form_value("update_cycle") or None,
+        "partner_notes": clean_form_value("partner_notes") or None,
         "crop_id": crop_id,
         "region_id": region_id,
         "state_id": state_id,
@@ -920,6 +935,18 @@ def update_actor_core(actor, values, profile):
     actor.crop_id = values["crop_id"]
     actor.updated_by_id = current_user.id
     actor.partner_organization_id = profile.partner_organization_id
+    metadata = dict(actor.metadata_json or {})
+    metadata.update({
+        "data_freshness_date": iso_date(values["data_freshness_date"]),
+        "last_verified_date": iso_date(values["last_verified_date"]),
+        "update_source": values["update_source"],
+        "update_cycle": values["update_cycle"],
+        "partner_notes": values["partner_notes"],
+        "partner_maintained_record": True,
+        "actor_confirmed_record": metadata.get("actor_confirmed_record", False),
+        "subscriber_safe": False,
+    })
+    actor.metadata_json = metadata
 
 
 def form_has_any(*field_names):
@@ -1052,6 +1079,16 @@ def actor_snapshot(actor):
         "status": actor.status,
         "source_reference_type": actor.source_reference_type,
         "source_reference": actor.source_reference,
+        "metadata": {
+            "data_freshness_date": (actor.metadata_json or {}).get("data_freshness_date"),
+            "last_verified_date": (actor.metadata_json or {}).get("last_verified_date"),
+            "update_source": (actor.metadata_json or {}).get("update_source"),
+            "update_cycle": (actor.metadata_json or {}).get("update_cycle"),
+            "partner_notes": (actor.metadata_json or {}).get("partner_notes"),
+            "partner_maintained_record": (actor.metadata_json or {}).get("partner_maintained_record"),
+            "actor_confirmed_record": (actor.metadata_json or {}).get("actor_confirmed_record"),
+            "subscriber_safe": (actor.metadata_json or {}).get("subscriber_safe"),
+        },
         "location": {
             "location_text": location.location_text if location else None,
             "region_id": location.region_id if location else None,
@@ -1548,6 +1585,20 @@ def dashboard():
     actor_count = len(actor_rows)
     quality_scores = [calculate_actor_quality_score(actor) for actor in actor_rows]
     average_quality_score = round(sum(item["score"] for item in quality_scores) / actor_count) if actor_count else None
+    import_batches = [
+        batch for batch in PartnerUpdateBatch.query.filter_by(partner_organization_id=org.id).all()
+        if is_import_batch(batch)
+    ]
+    latest_actor_update = max((actor.updated_at for actor in actor_rows if actor.updated_at), default=None)
+    last_verified_values = [
+        (actor.metadata_json or {}).get("last_verified_date")
+        for actor in actor_rows
+        if (actor.metadata_json or {}).get("last_verified_date")
+    ]
+    update_cycles = {}
+    for actor in actor_rows:
+        cycle = (actor.metadata_json or {}).get("update_cycle") or "not_set"
+        update_cycles[cycle] = update_cycles.get(cycle, 0) + 1
     draft_batch_count = PartnerUpdateBatch.query.filter_by(
         partner_organization_id=org.id,
         status="draft",
@@ -1565,8 +1616,198 @@ def dashboard():
         average_quality_score=average_quality_score,
         draft_batch_count=draft_batch_count,
         submitted_batch_count=submitted_batch_count,
+        import_batch_count=len(import_batches),
+        correction_batch_count=sum(1 for batch in import_batches if import_batch_summary(batch)["rejected_rows"]),
+        approved_actor_count=sum(1 for actor in actor_rows if actor.status == "active"),
+        latest_actor_update=latest_actor_update,
+        latest_verified_date=max(last_verified_values) if last_verified_values else None,
+        update_cycles=update_cycles,
         can_edit=can_edit_partner_records(profile),
         can_submit=can_submit_partner_batches(profile),
+    )
+
+
+@partner_bp.route("/onboarding")
+@login_required
+@require_partner_user
+def onboarding():
+    profile = get_current_partner_profile()
+    return render_template(
+        "partner/onboarding.html",
+        profile=profile,
+        organization=profile.partner_organization,
+        can_edit=can_edit_partner_records(profile),
+        can_submit=can_submit_partner_batches(profile),
+    )
+
+
+def get_partner_import_batch_or_404(batch_id, profile):
+    batch = get_partner_batch_or_404(batch_id, profile)
+    if not is_import_batch(batch):
+        abort(404)
+    return batch
+
+
+@partner_bp.route("/imports")
+@login_required
+@require_partner_user
+def imports():
+    profile = get_current_partner_profile()
+    batches = [
+        batch for batch in (
+            PartnerUpdateBatch.query
+            .filter_by(partner_organization_id=profile.partner_organization_id)
+            .order_by(PartnerUpdateBatch.updated_at.desc(), PartnerUpdateBatch.id.desc())
+            .all()
+        )
+        if is_import_batch(batch)
+    ]
+    summaries = {batch.id: import_batch_summary(batch) for batch in batches}
+    return render_template(
+        "partner/imports.html",
+        profile=profile,
+        organization=profile.partner_organization,
+        batches=batches,
+        summaries=summaries,
+        can_edit=can_edit_partner_records(profile),
+    )
+
+
+@partner_bp.route("/imports/new", methods=["GET", "POST"])
+@login_required
+@require_partner_user
+@require_partner_role(*EDITOR_ROLES)
+def new_import():
+    profile = get_current_partner_profile()
+    if request.method == "POST":
+        defaults = {
+            "data_freshness_date": clean_form_value("data_freshness_date"),
+            "last_verified_date": clean_form_value("last_verified_date"),
+            "update_source": clean_form_value("update_source") or "partner_bulk_upload",
+            "update_cycle": clean_form_value("update_cycle") or "monthly",
+            "partner_notes": clean_form_value("partner_notes"),
+        }
+        title = clean_form_value("title") or f"Live Actor Registry Import {datetime.utcnow().strftime('%Y-%m-%d')}"
+        reporting_month = clean_form_value("reporting_month") or datetime.utcnow().strftime("%Y-%m")
+        batch, errors = create_import_batch_from_upload(
+            profile.partner_organization_id,
+            current_user.id,
+            request.files.get("import_file"),
+            title,
+            reporting_month=reporting_month,
+            defaults=defaults,
+        )
+        if errors:
+            for error in errors:
+                flash(error, "error")
+            return render_template(
+                "partner/import_form.html",
+                profile=profile,
+                organization=profile.partner_organization,
+            )
+        add_audit_log(
+            "partner_actor_import_uploaded",
+            "partner_update_batch",
+            batch.id,
+            after_values=import_batch_summary(batch),
+            organization_id=profile.partner_organization_id,
+        )
+        db.session.commit()
+        flash("Spreadsheet imported for preview. Review warnings and corrections before submitting.", "success")
+        return redirect(url_for("partner.import_preview", batch_id=batch.id))
+
+    return render_template(
+        "partner/import_form.html",
+        profile=profile,
+        organization=profile.partner_organization,
+    )
+
+
+@partner_bp.route("/imports/<int:batch_id>")
+@login_required
+@require_partner_user
+def import_detail(batch_id):
+    profile = get_current_partner_profile()
+    batch = get_partner_import_batch_or_404(batch_id, profile)
+    return render_template(
+        "partner/import_detail.html",
+        profile=profile,
+        organization=profile.partner_organization,
+        batch=batch,
+        rows=import_batch_rows(batch),
+        summary=import_batch_summary(batch),
+        can_submit=can_submit_partner_batches(profile),
+    )
+
+
+@partner_bp.route("/imports/<int:batch_id>/preview")
+@login_required
+@require_partner_user
+def import_preview(batch_id):
+    profile = get_current_partner_profile()
+    batch = get_partner_import_batch_or_404(batch_id, profile)
+    return render_template(
+        "partner/import_preview.html",
+        profile=profile,
+        organization=profile.partner_organization,
+        batch=batch,
+        rows=import_batch_rows(batch),
+        summary=import_batch_summary(batch),
+        can_submit=can_submit_partner_batches(profile),
+    )
+
+
+@partner_bp.route("/imports/<int:batch_id>/submit", methods=["POST"])
+@login_required
+@require_partner_user
+@require_partner_role(*SUBMITTER_ROLES)
+def submit_import(batch_id):
+    profile = get_current_partner_profile()
+    batch = get_partner_import_batch_or_404(batch_id, profile)
+    if batch.status != "draft":
+        flash("Only draft import batches can be submitted.", "warning")
+        return redirect(url_for("partner.import_detail", batch_id=batch.id))
+    before_values = batch_snapshot(batch)
+    submitted, message = submit_import_batch(batch, current_user.id)
+    if not submitted:
+        flash(message, "error")
+        return redirect(url_for("partner.import_preview", batch_id=batch.id))
+    add_audit_log(
+        "partner_actor_import_submitted",
+        "partner_update_batch",
+        batch.id,
+        before_values=before_values,
+        after_values={**batch_snapshot(batch), **import_batch_summary(batch)},
+        organization_id=profile.partner_organization_id,
+    )
+    db.session.commit()
+    flash(message, "success")
+    return redirect(url_for("partner.import_detail", batch_id=batch.id))
+
+
+@partner_bp.route("/imports/<int:batch_id>/errors.csv")
+@login_required
+@require_partner_user
+def import_errors_csv(batch_id):
+    profile = get_current_partner_profile()
+    batch = get_partner_import_batch_or_404(batch_id, profile)
+    csv_text = error_csv_for_import_batch(batch)
+    return Response(
+        csv_text,
+        mimetype="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=partner-import-{batch.id}-errors.csv"},
+    )
+
+
+@partner_bp.route("/actor-update-invitations")
+@login_required
+@require_partner_user
+def actor_update_invitations():
+    profile = get_current_partner_profile()
+    return render_template(
+        "partner/actor_update_invitations.html",
+        profile=profile,
+        organization=profile.partner_organization,
     )
 
 
@@ -1575,11 +1816,11 @@ def dashboard():
 @require_partner_user
 def actors():
     profile = get_current_partner_profile()
-    actor_rows = (
-        MarketActor.query.filter_by(partner_organization_id=profile.partner_organization_id)
-        .order_by(MarketActor.updated_at.desc())
-        .all()
-    )
+    status_filter = request.args.get("status", "").strip()
+    query = MarketActor.query.filter_by(partner_organization_id=profile.partner_organization_id)
+    if status_filter:
+        query = query.filter_by(status=status_filter)
+    actor_rows = query.order_by(MarketActor.updated_at.desc()).all()
     quality_scores = {actor.id: calculate_actor_quality_score(actor) for actor in actor_rows}
     return render_template(
         "partner/actors.html",
@@ -1588,6 +1829,7 @@ def actors():
         actors=actor_rows,
         quality_scores=quality_scores,
         can_edit=can_edit_partner_records(profile),
+        selected_status=status_filter,
     )
 
 

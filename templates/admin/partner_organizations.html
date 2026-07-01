@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% block title %}Partner Organizations - FieldSight Africa{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="mb-8">
+        <a href="{{ url_for('admin.dashboard') }}" class="text-primary hover:underline text-sm">&larr; Back to Admin Dashboard</a>
+        <h1 class="text-3xl font-bold text-gray-900 mt-3">Partner Organizations</h1>
+        <p class="text-gray-600 mt-1">Data owner organizations maintaining the Live Actor Registry.</p>
+    </div>
+
+    <div class="bg-white rounded-xl shadow-sm border overflow-hidden">
+        <table class="w-full">
+            <thead class="bg-gray-50">
+                <tr>
+                    <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Organization</th>
+                    <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                    <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Data Owner Users</th>
+                    <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actors</th>
+                    <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Imports</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y">
+                {% for organization in organizations %}
+                {% set summary = summaries[organization.id] %}
+                <tr>
+                    <td class="px-5 py-4">
+                        <a href="{{ url_for('admin.partner_organization_detail', organization_id=organization.id) }}" class="font-medium text-primary hover:underline">{{ organization.name }}</a>
+                        <p class="text-xs text-gray-500">{{ organization.slug }}</p>
+                    </td>
+                    <td class="px-5 py-4 text-sm text-gray-700">{{ organization.status|title }}</td>
+                    <td class="px-5 py-4 text-sm text-gray-700">{{ summary.active_user_count }}</td>
+                    <td class="px-5 py-4 text-sm text-gray-700">{{ summary.actor_count }}</td>
+                    <td class="px-5 py-4 text-sm text-gray-700">{{ summary.import_count }}</td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="5" class="px-5 py-8 text-center text-sm text-gray-500">No partner organizations are available.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

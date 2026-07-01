@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+
+{% block title %}Partner Onboarding - FieldSight Africa{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4 mb-8">
+        <div>
+            <a href="{{ url_for('partner.dashboard') }}" class="text-primary hover:underline text-sm">&larr; Back to Partner Dashboard</a>
+            <h1 class="text-3xl font-bold text-gray-900 mt-3">Partner Data Owner Onboarding</h1>
+            <p class="text-gray-600 mt-1">{{ organization.name }} maintains a Live Actor Registry through Continuous Data Updates.</p>
+        </div>
+        {% if can_edit %}
+        <a href="{{ url_for('partner.new_import') }}" class="bg-primary text-white px-5 py-2 rounded-lg hover:bg-secondary">Bulk Upload Spreadsheet</a>
+        {% endif %}
+    </div>
+
+    <section class="bg-blue-50 border border-blue-200 rounded-xl p-6 mb-8 text-blue-900">
+        <h2 class="font-semibold text-blue-950 mb-2">Continuous registry operating model</h2>
+        <p>Partner-Maintained Records are refreshed through single actor entry, bulk imports, validation, correction, and admin review. Subscribers receive Subscription Access to current, governed, Subscriber-Safe Intelligence after review gates are satisfied.</p>
+    </section>
+
+    <div class="grid md:grid-cols-2 gap-6 mb-8">
+        {% for item in [
+            ('What You Can Update', 'Farmers, aggregators, exporters, commodity actors, location, registration status, export profile, certifications, constraints, freshness, and verification metadata.'),
+            ('Single Actor Entry', 'Use Add Single Actor for targeted updates, urgent corrections, or field-verified actor records. Restricted contacts remain hidden.'),
+            ('Bulk Upload', 'Use the exporter database spreadsheet template to import many actor rows, preview validation warnings, and prepare a batch for review.'),
+            ('Validation And Corrections', 'Rows with missing actor names, unsafe dates, likely duplicates, or warnings are clearly marked before submission.'),
+            ('Periodic Refresh', 'Use monthly, quarterly, seasonal, or ad hoc update cycles to keep the registry current. Data Freshness and Last Verified Date travel with each row.'),
+            ('Admin Review', 'Submitted rows become Admin-Reviewed Records only after governance checks. No actor data becomes subscriber-safe automatically.'),
+            ('Actor Self-Updates', 'Future invite-based confirmation can let actors confirm or update their records, with partner/admin review still required.'),
+            ('Subscriber-Safe Intelligence', 'Approved current registry signals support governed subscriptions, API-safe metadata, commercial reporting, and intelligence workflows.')
+        ] %}
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <h2 class="text-lg font-semibold text-gray-900">{{ item[0] }}</h2>
+            <p class="text-sm text-gray-600 mt-2">{{ item[1] }}</p>
+        </div>
+        {% endfor %}
+    </div>
+
+    <div class="flex flex-wrap gap-3">
+        <a href="{{ url_for('partner.new_actor') }}" class="px-5 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50">Add Single Actor</a>
+        <a href="{{ url_for('partner.imports') }}" class="px-5 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50">View Import Batches</a>
+        <a href="{{ url_for('partner.actor_update_invitations') }}" class="px-5 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50">Actor-Confirmed Records</a>
+    </div>
+</div>
+{% endblock %}

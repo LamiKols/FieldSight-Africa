@@ -40,20 +40,25 @@ from models import (  # noqa: E402
     IntelligenceSource,
     MarketActor,
     PartnerOrganization,
+    PartnerUpdateBatch,
+    PartnerUserProfile,
     Region,
     SubscriberIntelligenceDigest,
     User,
     consent_document_category_for_document_type,
     db,
 )
+from routes.partner_imports import create_import_batch_from_rows, import_batch_summary, is_import_batch  # noqa: E402
 
 
 DEMO_ADMIN_EMAIL = "demo.admin@fieldsight-demo.invalid"
 DEMO_SUBSCRIBER_EMAIL = "demo.subscriber@fieldsight-demo.invalid"
+DEMO_PARTNER_EMAIL = "demo.partner-owner@fieldsight-demo.invalid"
 DEMO_PASSWORD = "demo-validation-password"
 DEMO_PARTNER_SLUG = "demo-sahel-produce-network"
 DEMO_ACTOR_PUBLIC_ID = "demo-actor-sahel-0001"
 DEMO_DOCUMENT_TITLE = "Demo Certificate Of Origin Metadata"
+DEMO_IMPORT_TITLE = "Demo Monthly Live Actor Registry Import"
 
 
 def utcnow():
@@ -95,6 +100,25 @@ def get_or_create_partner():
     db.session.add(partner)
     db.session.flush()
     return partner
+
+
+def get_or_create_partner_profile(user, partner, partner_role="partner_admin"):
+    profile = PartnerUserProfile.query.filter_by(
+        user_id=user.id,
+        partner_organization_id=partner.id,
+    ).first()
+    if not profile:
+        profile = PartnerUserProfile(
+            user_id=user.id,
+            partner_organization_id=partner.id,
+            partner_role=partner_role,
+            status="active",
+        )
+        db.session.add(profile)
+    profile.partner_role = partner_role
+    profile.status = "active"
+    db.session.flush()
+    return profile
 
 
 def first_or_create_crop():
@@ -154,7 +178,18 @@ def seed_actor_registry(admin, partner):
             status="active",
             source_reference_type="demo_seed",
             source_reference="commercial-demo-launch-readiness",
-            metadata_json={"synthetic_demo_record": True, "real_contact_details": False},
+            metadata_json={
+                "synthetic_demo_record": True,
+                "real_contact_details": False,
+                "data_freshness_date": (utcnow().date() - timedelta(days=7)).isoformat(),
+                "last_verified_date": (utcnow().date() - timedelta(days=5)).isoformat(),
+                "update_source": "demo_partner_owner_review",
+                "update_cycle": "monthly",
+                "partner_notes": "Synthetic baseline actor for partner owner onboarding.",
+                "partner_maintained_record": True,
+                "actor_confirmed_record": False,
+                "subscriber_safe": False,
+            },
         )
         db.session.add(actor)
         db.session.flush()
@@ -164,6 +199,17 @@ def seed_actor_registry(admin, partner):
         actor.crop_id = crop.id
         actor.status = "active"
         actor.archived_at = None
+        actor.metadata_json = {
+            **(actor.metadata_json or {}),
+            "data_freshness_date": (utcnow().date() - timedelta(days=7)).isoformat(),
+            "last_verified_date": (utcnow().date() - timedelta(days=5)).isoformat(),
+            "update_source": "demo_partner_owner_review",
+            "update_cycle": "monthly",
+            "partner_notes": "Synthetic baseline actor for partner owner onboarding.",
+            "partner_maintained_record": True,
+            "actor_confirmed_record": False,
+            "subscriber_safe": False,
+        }
 
     location = ActorLocation.query.filter_by(market_actor_id=actor.id).first()
     if not location:
@@ -503,14 +549,95 @@ def seed_commercial_requests(subscriber):
     return created
 
 
+def seed_partner_import_demo(partner_user, partner):
+    existing = PartnerUpdateBatch.query.filter_by(
+        partner_organization_id=partner.id,
+        title=DEMO_IMPORT_TITLE,
+    ).first()
+    if existing and is_import_batch(existing):
+        return import_batch_summary(existing)
+
+    raw_rows = [
+        {
+            "COMMODITY CATEGORY": "Ginger",
+            "FARMER/AGGREAGATOR": "Demo Fresh Ginger Aggregator",
+            "LOCATION": "Demo aggregation zone B",
+            "STATE": "Lagos",
+            "PHONE": "+2340000000000",
+            "EMAIL": "actor-contact@fieldsight-demo.invalid",
+            "LGA": "Ikeja",
+            "REGISTRATION STATUS": "registered",
+            "DATE OF REGISTRATION": "2026-06-01",
+            "NUMBER OF YEARS IN EXPORT TRADE": "3",
+            "TRADE DESTINATION": "Demo ECOWAS buyer market",
+            "EXPORT CAPACITY": "25 metric tonnes monthly",
+            "ERTIFICATION": "Demo phytosanitary readiness",
+            "PORT OF EXIT": "Demo Lagos export corridor",
+            "CONSTRAINT": "Requires periodic certification refresh",
+        },
+        {
+            "COMMODITY CATEGORY": "Ginger",
+            "FARMER/AGGREAGATOR": "",
+            "LOCATION": "Demo missing actor name zone",
+            "STATE": "Lagos",
+            "PHONE": "",
+            "EMAIL": "",
+            "LGA": "Ikeja",
+            "REGISTRATION STATUS": "pending",
+            "DATE OF REGISTRATION": "not-a-date",
+            "NUMBER OF YEARS IN EXPORT TRADE": "2",
+            "TRADE DESTINATION": "Demo buyer market",
+            "EXPORT CAPACITY": "10 bags monthly",
+            "ERTIFICATION": "Demo certificate pending",
+            "PORT OF EXIT": "Demo port",
+            "CONSTRAINT": "Missing actor name must be corrected",
+        },
+        {
+            "COMMODITY CATEGORY": "Ginger",
+            "FARMER/AGGREAGATOR": "Demo Sahel Ginger Exporter",
+            "LOCATION": "Demo aggregation zone",
+            "STATE": "Lagos",
+            "PHONE": "",
+            "EMAIL": "",
+            "LGA": "Ikeja",
+            "REGISTRATION STATUS": "registered",
+            "DATE OF REGISTRATION": "2026-05-20",
+            "NUMBER OF YEARS IN EXPORT TRADE": "4",
+            "TRADE DESTINATION": "Demo ECOWAS buyer market",
+            "EXPORT CAPACITY": "Updated monthly volume",
+            "ERTIFICATION": "Demo Export Readiness Certificate",
+            "PORT OF EXIT": "Demo Lagos export corridor",
+            "CONSTRAINT": "Potential update candidate for existing actor",
+        },
+    ]
+    batch = create_import_batch_from_rows(
+        partner.id,
+        partner_user.id,
+        raw_rows,
+        DEMO_IMPORT_TITLE,
+        reporting_month=utcnow().strftime("%Y-%m"),
+        defaults={
+            "data_freshness_date": utcnow().date().isoformat(),
+            "last_verified_date": utcnow().date().isoformat(),
+            "update_source": "demo_partner_bulk_upload",
+            "update_cycle": "monthly",
+            "partner_notes": "Synthetic owner onboarding import with valid, rejected, and update candidate rows.",
+        },
+    )
+    return import_batch_summary(batch)
+
+
 def seed_demo_data(commit=True):
     admin = get_or_create_user("Demo Admin", DEMO_ADMIN_EMAIL, "admin")
     subscriber = get_or_create_user("Demo Subscriber", DEMO_SUBSCRIBER_EMAIL, "subscriber")
+    partner_user = get_or_create_user("Demo Partner Owner", DEMO_PARTNER_EMAIL, "subscriber")
     partner = get_or_create_partner()
+    get_or_create_partner_profile(partner_user, partner)
     actor = seed_actor_registry(admin, partner)
     document = seed_document_and_requests(admin, subscriber, partner, actor)
     intelligence_summary = seed_intelligence(admin)
     commercial_created = seed_commercial_requests(subscriber)
+    partner_import_summary = seed_partner_import_demo(partner_user, partner)
 
     if commit:
         db.session.commit()
@@ -518,10 +645,12 @@ def seed_demo_data(commit=True):
     return {
         "admin_user": admin.email,
         "subscriber_user": subscriber.email,
+        "partner_user": partner_user.email,
         "partner": partner.slug,
         "actor_public_id": actor.public_id,
         "document_id": document.id,
         "commercial_requests_created": commercial_created,
+        "partner_import_rows": partner_import_summary["total_rows"],
         **intelligence_summary,
     }
 
