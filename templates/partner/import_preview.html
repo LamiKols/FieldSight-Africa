@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+
+{% block title %}Import Preview - FieldSight Africa{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4 mb-8">
+        <div>
+            <a href="{{ url_for('partner.imports') }}" class="text-primary hover:underline text-sm">&larr; Back to Imports</a>
+            <h1 class="text-3xl font-bold text-gray-900 mt-3">Import Preview</h1>
+            <p class="text-gray-600 mt-1">{{ batch.title }} | {{ batch.status|replace('_', ' ')|title }}</p>
+        </div>
+        <div class="flex flex-wrap gap-3">
+            <a href="{{ url_for('partner.import_errors_csv', batch_id=batch.id) }}" class="px-5 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50">Download Error CSV</a>
+            {% if batch.status == 'draft' and can_submit and summary.valid_rows %}
+            <form method="POST" action="{{ url_for('partner.submit_import', batch_id=batch.id) }}">
+                <button type="submit" class="bg-primary text-white px-5 py-2 rounded-lg hover:bg-secondary">Submit Valid Rows</button>
+            </form>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="grid md:grid-cols-4 lg:grid-cols-7 gap-4 mb-8">
+        {% for label, value in [
+            ('Total Rows', summary.total_rows),
+            ('Valid Rows', summary.valid_rows),
+            ('Rows With Warnings', summary.rows_with_warnings),
+            ('Rejected Rows', summary.rejected_rows),
+            ('Duplicates', summary.duplicates),
+            ('Create Rows', summary.create_rows),
+            ('Update Candidates', summary.update_candidates)
+        ] %}
+        <div class="bg-white rounded-xl shadow-sm border p-4">
+            <p class="text-xs text-gray-500 uppercase">{{ label }}</p>
+            <p class="text-2xl font-bold text-gray-900 mt-2">{{ value }}</p>
+        </div>
+        {% endfor %}
+    </div>
+
+    <section class="bg-white rounded-xl shadow-sm border overflow-hidden">
+        <div class="p-6 border-b">
+            <h2 class="text-xl font-semibold text-gray-900">Row-Level Validation</h2>
+            <p class="text-sm text-gray-600 mt-1">Contact values are not shown here; if a create row is accepted, phone/email values are kept only in restricted contact records.</p>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Row</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actor</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Commodity</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Location</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Action</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Messages</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y">
+                    {% for row in rows %}
+                    {% set payload = row.after_values or {} %}
+                    {% set fields = payload.get('fields', {}) %}
+                    <tr>
+                        <td class="px-4 py-4 text-sm text-gray-700">{{ payload.get('row_number') }}</td>
+                        <td class="px-4 py-4 text-sm font-medium text-gray-900">{{ fields.get('actor_name') or 'Missing actor name' }}</td>
+                        <td class="px-4 py-4 text-sm text-gray-700">{{ fields.get('commodity_category') or 'Not supplied' }}</td>
+                        <td class="px-4 py-4 text-sm text-gray-700">{{ fields.get('state_name') or fields.get('location_text') or 'Not supplied' }}</td>
+                        <td class="px-4 py-4 text-sm text-gray-700">{{ payload.get('action')|replace('_', ' ')|title }}</td>
+                        <td class="px-4 py-4 text-sm">
+                            {% for error in payload.get('errors', []) %}
+                            <p class="text-red-700">{{ error }}</p>
+                            {% endfor %}
+                            {% for warning in payload.get('warnings', []) %}
+                            <p class="text-amber-700">{{ warning }}</p>
+                            {% endfor %}
+                            {% if not payload.get('errors') and not payload.get('warnings') %}
+                            <span class="text-emerald-700">Ready for admin review</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+</div>
+{% endblock %}

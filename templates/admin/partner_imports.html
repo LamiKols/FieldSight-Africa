@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+
+{% block title %}Partner Imports - FieldSight Africa{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="mb-8">
+        <a href="{{ url_for('admin.dashboard') }}" class="text-primary hover:underline text-sm">&larr; Back to Admin Dashboard</a>
+        <h1 class="text-3xl font-bold text-gray-900 mt-3">Partner Registry Imports</h1>
+        <p class="text-gray-600 mt-1">Admin view of bulk Live Actor Registry updates submitted by data owner organizations.</p>
+    </div>
+
+    <div class="bg-white rounded-xl shadow-sm border overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="w-full">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Import</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Partner</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Rows</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Rejected</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Duplicates</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Created Actors</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y">
+                    {% for batch in batches %}
+                    {% set summary = summaries[batch.id] %}
+                    <tr>
+                        <td class="px-5 py-4">
+                            <a href="{{ url_for('admin.partner_import_detail', batch_id=batch.id) }}" class="font-medium text-primary hover:underline">{{ batch.title }}</a>
+                            <p class="text-xs text-gray-500">{{ batch.reporting_month or 'No update month' }}</p>
+                        </td>
+                        <td class="px-5 py-4 text-sm text-gray-700">{{ batch.partner_organization.name if batch.partner_organization else 'Unknown partner' }}</td>
+                        <td class="px-5 py-4 text-sm text-gray-700">{{ batch.status|replace('_', ' ')|title }}</td>
+                        <td class="px-5 py-4 text-sm text-gray-700">{{ summary.total_rows }}</td>
+                        <td class="px-5 py-4 text-sm text-gray-700">{{ summary.rejected_rows }}</td>
+                        <td class="px-5 py-4 text-sm text-gray-700">{{ summary.duplicates }}</td>
+                        <td class="px-5 py-4 text-sm text-gray-700">{{ summary.created_actors }}</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="7" class="px-5 py-8 text-center text-sm text-gray-500">No partner imports are available.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

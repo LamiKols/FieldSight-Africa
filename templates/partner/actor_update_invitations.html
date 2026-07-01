@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+
+{% block title %}Actor-Confirmed Records - FieldSight Africa{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="mb-8">
+        <a href="{{ url_for('partner.dashboard') }}" class="text-primary hover:underline text-sm">&larr; Back to Partner Dashboard</a>
+        <h1 class="text-3xl font-bold text-gray-900 mt-3">Actor-Confirmed Records</h1>
+        <p class="text-gray-600 mt-1">Lightweight foundation for future invite-based actor self-updates.</p>
+    </div>
+
+    <div class="bg-white rounded-xl shadow-sm border p-8">
+        <h2 class="text-xl font-semibold text-gray-900 mb-4">Future Invite-Based Update Flow</h2>
+        <div class="grid md:grid-cols-2 gap-6">
+            <div class="rounded-lg border border-gray-200 p-5">
+                <h3 class="font-medium text-gray-900">Partner Initiates Invite</h3>
+                <p class="text-sm text-gray-600 mt-2">A partner can later invite a farmer, aggregator, exporter, or commodity actor to confirm/update their own record.</p>
+            </div>
+            <div class="rounded-lg border border-gray-200 p-5">
+                <h3 class="font-medium text-gray-900">Actor Submits Change</h3>
+                <p class="text-sm text-gray-600 mt-2">Actor updates become pending change requests; no update becomes Subscriber-Safe Intelligence immediately.</p>
+            </div>
+            <div class="rounded-lg border border-gray-200 p-5">
+                <h3 class="font-medium text-gray-900">Partner/Admin Review</h3>
+                <p class="text-sm text-gray-600 mt-2">Partner review and admin governance remain required before any external intelligence surface changes.</p>
+            </div>
+            <div class="rounded-lg border border-gray-200 p-5">
+                <h3 class="font-medium text-gray-900">Audit-Gated Publication</h3>
+                <p class="text-sm text-gray-600 mt-2">Consent, review, publish-readiness, entitlement, and API safety gates remain authoritative.</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

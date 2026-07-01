@@ -52,6 +52,8 @@ from models import (
     IntelligenceSource,
     MarketActor,
     PartnerOrganization,
+    PartnerUpdateBatch,
+    PartnerUserProfile,
     SubscriberIntelligenceDigest,
     db,
     User,
@@ -83,6 +85,11 @@ from routes.partner import (
     current_document_version,
     document_version_file_metadata,
     resolve_document_storage_path,
+)
+from routes.partner_imports import (
+    import_batch_rows,
+    import_batch_summary,
+    is_import_batch,
 )
 from document_automation import (
     DEFAULT_BATCH_LIMIT,
@@ -2243,6 +2250,8 @@ def demo_walkthrough_steps():
 def admin_operating_model_links():
     return [
         {'label': 'Actor Registry', 'description': 'Partner-managed market actor records.', 'url': url_for('admin.actor_registry')},
+        {'label': 'Partner Organizations', 'description': 'Data owner organizations and users.', 'url': url_for('admin.partner_organizations')},
+        {'label': 'Partner Imports', 'description': 'Bulk registry update batches for admin review.', 'url': url_for('admin.partner_imports')},
         {'label': 'Documents', 'description': 'Document review and vault governance.', 'url': url_for('admin.document_review_queue')},
         {'label': 'Document Review', 'description': 'Admin approval, verification, and correction queue.', 'url': url_for('admin.document_review_queue')},
         {'label': 'Commercial Requests', 'description': 'Upgrade, API, and Live Intelligence request pipeline.', 'url': url_for('admin.commercial_requests')},
@@ -2319,6 +2328,104 @@ def actor_registry():
         actors=actors,
         type_counts=type_counts,
         status_counts=status_counts,
+    )
+
+
+def admin_partner_import_batches():
+    return [
+        batch for batch in PartnerUpdateBatch.query.order_by(PartnerUpdateBatch.updated_at.desc(), PartnerUpdateBatch.id.desc()).all()
+        if is_import_batch(batch)
+    ]
+
+
+@admin_bp.route('/partner-imports')
+@login_required
+@admin_required
+def partner_imports():
+    batches = admin_partner_import_batches()
+    summaries = {batch.id: import_batch_summary(batch) for batch in batches}
+    return render_template(
+        'admin/partner_imports.html',
+        batches=batches,
+        summaries=summaries,
+    )
+
+
+@admin_bp.route('/partner-imports/<int:batch_id>')
+@login_required
+@admin_required
+def partner_import_detail(batch_id):
+    batch = PartnerUpdateBatch.query.get_or_404(batch_id)
+    if not is_import_batch(batch):
+        abort(404)
+    return render_template(
+        'admin/partner_import_detail.html',
+        batch=batch,
+        rows=import_batch_rows(batch),
+        summary=import_batch_summary(batch),
+    )
+
+
+@admin_bp.route('/partner-organizations')
+@login_required
+@admin_required
+def partner_organizations():
+    organizations = PartnerOrganization.query.order_by(PartnerOrganization.name).all()
+    summaries = {}
+    for organization in organizations:
+        summaries[organization.id] = {
+            'actor_count': MarketActor.query.filter_by(partner_organization_id=organization.id).count(),
+            'import_count': sum(1 for batch in organization.update_batches if is_import_batch(batch)),
+            'active_user_count': PartnerUserProfile.query.filter_by(
+                partner_organization_id=organization.id,
+                status='active',
+            ).count(),
+        }
+    return render_template(
+        'admin/partner_organizations.html',
+        organizations=organizations,
+        summaries=summaries,
+    )
+
+
+@admin_bp.route('/partner-organizations/<int:organization_id>')
+@login_required
+@admin_required
+def partner_organization_detail(organization_id):
+    organization = PartnerOrganization.query.get_or_404(organization_id)
+    actors = (
+        MarketActor.query.filter_by(partner_organization_id=organization.id)
+        .order_by(MarketActor.updated_at.desc(), MarketActor.id.desc())
+        .limit(25)
+        .all()
+    )
+    import_batches = [
+        batch for batch in organization.update_batches
+        if is_import_batch(batch)
+    ]
+    return render_template(
+        'admin/partner_organization_detail.html',
+        organization=organization,
+        actors=actors,
+        import_batches=import_batches,
+        import_summaries={batch.id: import_batch_summary(batch) for batch in import_batches},
+    )
+
+
+@admin_bp.route('/partner-organizations/<int:organization_id>/users')
+@login_required
+@admin_required
+def partner_organization_users(organization_id):
+    organization = PartnerOrganization.query.get_or_404(organization_id)
+    profiles = (
+        PartnerUserProfile.query.filter_by(partner_organization_id=organization.id)
+        .order_by(PartnerUserProfile.updated_at.desc(), PartnerUserProfile.id.desc())
+        .all()
+    )
+    return render_template(
+        'admin/partner_organization_users.html',
+        organization=organization,
+        profiles=profiles,
     )
 
 

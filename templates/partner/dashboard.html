@@ -4,11 +4,24 @@
 
 {% block content %}
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-    <div class="mb-8">
+    <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4 mb-8">
+        <div>
         <p class="text-sm text-primary font-medium">Partner Portal</p>
         <h1 class="text-3xl font-bold text-gray-900">{{ organization.name }}</h1>
-        <p class="text-gray-600 mt-1">Role: {{ profile.partner_role|replace('_', ' ')|title }}</p>
+        <p class="text-gray-600 mt-1">Live Actor Registry | Continuous Data Updates | Subscription Access | Role: {{ profile.partner_role|replace('_', ' ')|title }}</p>
+        </div>
+        <div class="flex flex-wrap gap-3">
+            <a href="{{ url_for('partner.onboarding') }}" class="px-5 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50">How It Works</a>
+            {% if can_edit %}
+            <a href="{{ url_for('partner.new_actor') }}" class="px-5 py-2 rounded-lg bg-primary text-white hover:bg-secondary">Add Single Actor</a>
+            {% endif %}
+        </div>
     </div>
+
+    <section class="rounded-xl bg-blue-50 border border-blue-200 p-5 mb-8 text-sm text-blue-900">
+        <h2 class="font-semibold text-blue-950 mb-2">How continuous registry updates work</h2>
+        <p>Partner-Maintained Records are refreshed through single actor entry and bulk spreadsheet imports. Actor-Confirmed Records can later be invited to confirm details. Admin-Reviewed Records become Subscriber-Safe Intelligence only after governance review, so subscription access reflects current, reviewed data rather than a stale extract.</p>
+    </section>
 
     <div class="grid md:grid-cols-4 gap-6 mb-8">
         <div class="bg-white rounded-xl shadow-sm border p-6">
@@ -20,31 +33,68 @@
             <p class="text-3xl font-bold text-primary mt-2">{{ average_quality_score if average_quality_score is not none else 'N/A' }}{% if average_quality_score is not none %}%{% endif %}</p>
         </div>
         <div class="bg-white rounded-xl shadow-sm border p-6">
-            <h3 class="text-sm font-medium text-gray-500 uppercase tracking-wide">Draft Batches</h3>
-            <p class="text-3xl font-bold text-primary mt-2">{{ draft_batch_count }}</p>
+            <h3 class="text-sm font-medium text-gray-500 uppercase tracking-wide">Import Batches</h3>
+            <p class="text-3xl font-bold text-primary mt-2">{{ import_batch_count }}</p>
         </div>
         <div class="bg-white rounded-xl shadow-sm border p-6">
-            <h3 class="text-sm font-medium text-gray-500 uppercase tracking-wide">Submitted Batches</h3>
-            <p class="text-3xl font-bold text-gray-900 mt-2">{{ submitted_batch_count }}</p>
+            <h3 class="text-sm font-medium text-gray-500 uppercase tracking-wide">Approved Actors</h3>
+            <p class="text-3xl font-bold text-gray-900 mt-2">{{ approved_actor_count }}</p>
+        </div>
+    </div>
+
+    <div class="grid md:grid-cols-3 gap-6 mb-8">
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <h3 class="text-sm font-medium text-gray-500 uppercase tracking-wide">Data Freshness</h3>
+            <p class="text-lg font-semibold text-gray-900 mt-2">{{ latest_actor_update.strftime('%Y-%m-%d') if latest_actor_update else 'No updates yet' }}</p>
+            <p class="text-sm text-gray-600 mt-1">Last Updated</p>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <h3 class="text-sm font-medium text-gray-500 uppercase tracking-wide">Last Verified Date</h3>
+            <p class="text-lg font-semibold text-gray-900 mt-2">{{ latest_verified_date or 'Not recorded' }}</p>
+            <p class="text-sm text-gray-600 mt-1">Latest verification metadata</p>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <h3 class="text-sm font-medium text-gray-500 uppercase tracking-wide">Update Cycle</h3>
+            <p class="text-lg font-semibold text-gray-900 mt-2">{{ update_cycles.keys()|list|join(', ') if update_cycles else 'Monthly' }}</p>
+            <p class="text-sm text-gray-600 mt-1">Monthly or periodic refresh cadence</p>
         </div>
     </div>
 
     <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
         <a href="{{ url_for('partner.actors') }}" class="bg-white rounded-xl border p-6 hover:border-primary transition">
-            <h2 class="text-lg font-semibold text-gray-900">Actor Registry</h2>
-            <p class="text-gray-600 text-sm mt-1">View your organization's submitted actor records.</p>
+            <h2 class="text-lg font-semibold text-gray-900">Live Actor Registry</h2>
+            <p class="text-gray-600 text-sm mt-1">View Partner-Maintained Records and current registry quality.</p>
         </a>
 
         {% if can_edit %}
         <a href="{{ url_for('partner.new_actor') }}" class="bg-primary text-white rounded-xl p-6 hover:bg-secondary transition">
-            <h2 class="text-lg font-semibold">Add Actor</h2>
+            <h2 class="text-lg font-semibold">Add Single Actor</h2>
             <p class="text-green-100 text-sm mt-1">Create a structured actor registry record.</p>
+        </a>
+        <a href="{{ url_for('partner.new_import') }}" class="bg-white rounded-xl border p-6 hover:border-primary transition">
+            <h2 class="text-lg font-semibold text-gray-900">Bulk Upload Spreadsheet</h2>
+            <p class="text-gray-600 text-sm mt-1">Preview a registry spreadsheet before review submission.</p>
         </a>
         {% endif %}
 
+        <a href="{{ url_for('partner.imports') }}" class="bg-white rounded-xl border p-6 hover:border-primary transition">
+            <h2 class="text-lg font-semibold text-gray-900">View Import Batches</h2>
+            <p class="text-gray-600 text-sm mt-1">Track valid rows, warnings, rejected rows, and duplicates.</p>
+        </a>
+
+        <a href="{{ url_for('partner.imports') }}" class="bg-white rounded-xl border p-6 hover:border-primary transition">
+            <h2 class="text-lg font-semibold text-gray-900">Fix Corrections</h2>
+            <p class="text-gray-600 text-sm mt-1">{{ correction_batch_count }} batch{% if correction_batch_count != 1 %}es{% endif %} with corrections or rejected rows.</p>
+        </a>
+
         <a href="{{ url_for('partner.batches') }}" class="bg-white rounded-xl border p-6 hover:border-primary transition">
-            <h2 class="text-lg font-semibold text-gray-900">Update Batches</h2>
-            <p class="text-gray-600 text-sm mt-1">Track draft and submitted partner data updates.</p>
+            <h2 class="text-lg font-semibold text-gray-900">Submit Data For Review</h2>
+            <p class="text-gray-600 text-sm mt-1">Move validated records into admin-reviewed governance.</p>
+        </a>
+
+        <a href="{{ url_for('partner.actors', status='active') }}" class="bg-white rounded-xl border p-6 hover:border-primary transition">
+            <h2 class="text-lg font-semibold text-gray-900">View Approved Actors</h2>
+            <p class="text-gray-600 text-sm mt-1">Review current actors ready for governed intelligence workflows.</p>
         </a>
 
         <a href="{{ url_for('partner.document_corrections') }}" class="bg-white rounded-xl border p-6 hover:border-primary transition">
@@ -54,10 +104,15 @@
 
         {% if can_edit %}
         <a href="{{ url_for('partner.new_batch') }}" class="bg-white rounded-xl border p-6 hover:border-primary transition">
-            <h2 class="text-lg font-semibold text-gray-900">New Batch</h2>
+            <h2 class="text-lg font-semibold text-gray-900">Manual Update Batch</h2>
             <p class="text-gray-600 text-sm mt-1">Start a draft actor registry update batch.</p>
         </a>
         {% endif %}
+
+        <a href="{{ url_for('partner.actor_update_invitations') }}" class="bg-white rounded-xl border p-6 hover:border-primary transition">
+            <h2 class="text-lg font-semibold text-gray-900">Actor-Confirmed Records</h2>
+            <p class="text-gray-600 text-sm mt-1">Preview future invite-based actor self-update controls.</p>
+        </a>
     </div>
 </div>
 {% endblock %}
