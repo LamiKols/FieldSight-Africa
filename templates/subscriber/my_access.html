@@ -10,6 +10,7 @@
             <p class="text-gray-600 mt-1">Your current subscriptions, licences, API scope, and governed document metadata access.</p>
         </div>
         <div class="flex flex-wrap gap-3">
+            <a href="{{ url_for('subscriber.product_tour') }}" class="px-5 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50">Product Tour</a>
             <a href="{{ url_for('subscriber.intelligence_digests') }}" class="px-5 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50">Intelligence Digests</a>
             <a href="{{ url_for('subscriber.products') }}" class="px-5 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50">View Products</a>
             <a href="{{ url_for('subscriber.commercial_request_new', request_type='upgrade') }}" class="px-5 py-2 rounded-lg bg-primary text-white hover:bg-secondary">Request Upgrade</a>

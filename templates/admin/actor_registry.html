@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+
+{% block title %}Actor Registry - FieldSight Africa{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4 mb-8">
+        <div>
+            <a href="{{ url_for('admin.dashboard') }}" class="text-primary hover:underline text-sm">&larr; Back to Admin Dashboard</a>
+            <h1 class="text-3xl font-bold text-gray-900 mt-3">Actor Registry</h1>
+            <p class="text-gray-600 mt-1">Read-only admin overview of partner-managed actor records for demo and review.</p>
+        </div>
+        <a href="{{ url_for('admin.demo_walkthrough') }}" class="px-5 py-2 rounded-lg bg-primary text-white hover:bg-secondary">Demo Walkthrough</a>
+    </div>
+
+    <div class="rounded-xl bg-blue-50 border border-blue-200 p-5 mb-6 text-sm text-blue-800">
+        This admin overview intentionally excludes actor contact fields, private document paths, filenames, file hashes, raw extraction text, and restricted document details.
+    </div>
+
+    <div class="grid md:grid-cols-3 gap-6 mb-8">
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <p class="text-sm text-gray-500">Actors</p>
+            <p class="text-3xl font-bold text-gray-900 mt-2">{{ actors|length }}</p>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <p class="text-sm text-gray-500">Actor Types</p>
+            <p class="text-3xl font-bold text-primary mt-2">{{ type_counts|length }}</p>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <p class="text-sm text-gray-500">Statuses</p>
+            <p class="text-3xl font-bold text-primary mt-2">{{ status_counts|length }}</p>
+        </div>
+    </div>
+
+    <section class="bg-white rounded-xl shadow-sm border">
+        <div class="p-6 border-b">
+            <h2 class="text-xl font-semibold text-gray-900">Recent Actor Records</h2>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actor</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Partner</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Crop</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Location</th>
+                        <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y">
+                    {% for actor in actors %}
+                    <tr>
+                        <td class="px-5 py-4">
+                            <p class="text-sm font-medium text-gray-900">{{ actor.name }}</p>
+                            <p class="text-xs text-gray-500">{{ actor.public_id }}</p>
+                        </td>
+                        <td class="px-5 py-4 text-sm text-gray-700">{{ actor.actor_type|replace('_', ' ')|title }}</td>
+                        <td class="px-5 py-4 text-sm text-gray-700">{{ actor.partner_organization.name if actor.partner_organization else 'Unknown partner' }}</td>
+                        <td class="px-5 py-4 text-sm text-gray-700">{{ actor.crop.name if actor.crop else actor.commodity_category or 'Not scoped' }}</td>
+                        <td class="px-5 py-4 text-sm text-gray-700">{{ actor.location.location_text if actor.location and actor.location.location_text else actor.location.location if actor.location and actor.location.location else 'Not recorded' }}</td>
+                        <td class="px-5 py-4 text-sm text-gray-700">{{ actor.status|replace('_', ' ')|title }}</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="6" class="px-5 py-8 text-center text-sm text-gray-500">No actor records are available yet.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+</div>
+{% endblock %}
