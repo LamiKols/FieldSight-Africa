@@ -52,6 +52,7 @@ from models import (
     IntelligenceSource,
     MarketActor,
     PartnerOrganization,
+    SubscriberIntelligenceDigest,
     db,
     User,
     Subscription,
@@ -2094,6 +2095,167 @@ def automation_dashboard_context():
     }
 
 
+def commercial_readiness_context():
+    now = datetime.utcnow()
+    queued_automation = DocumentAutomationRun.query.filter_by(status='queued').count()
+    running_automation = DocumentAutomationRun.query.filter_by(status='running').count()
+    failed_automation = DocumentAutomationRun.query.filter_by(status='failed').count()
+    needs_review_automation = DocumentAutomationRun.query.filter_by(status='needs_review').count()
+    open_alerts = IntelligenceAlert.query.filter(
+        IntelligenceAlert.status.in_(['open', 'in_review'])
+    ).count()
+    pending_document_reviews = ActorDocument.query.filter(
+        ActorDocument.archived_at.is_(None),
+        ActorDocument.review_status.in_(['pending', 'needs_correction', 'redaction_required']),
+    ).count()
+    commercial_requests = CommercialRequest.query.count()
+    document_access_requests = DocumentAccessRequest.query.count()
+    api_access_requests = CommercialRequest.query.filter_by(request_type='api_access').count()
+    indicators = [
+        {
+            'label': 'Active intelligence sources',
+            'value': IntelligenceSource.query.filter_by(status='active').count(),
+            'status': 'ready',
+            'url': url_for('admin.intelligence_sources'),
+            'detail': 'Registered sources available for manual demo ingestion.',
+        },
+        {
+            'label': 'Recent ingestion runs',
+            'value': IntelligenceIngestionRun.query.filter(
+                IntelligenceIngestionRun.created_at >= now - timedelta(days=14)
+            ).count(),
+            'status': 'ready',
+            'url': url_for('admin.intelligence_ingestion_runs'),
+            'detail': 'Safe source ingestion history in the last 14 days.',
+        },
+        {
+            'label': 'Open intelligence alerts',
+            'value': open_alerts,
+            'status': 'attention' if open_alerts else 'ready',
+            'url': url_for('admin.intelligence_alerts'),
+            'detail': 'Internal alert queue requiring review before candidate publication.',
+        },
+        {
+            'label': 'Approved digests',
+            'value': SubscriberIntelligenceDigest.query.filter(
+                SubscriberIntelligenceDigest.status.in_(['approved', 'published'])
+            ).count(),
+            'status': 'ready',
+            'url': url_for('subscriber.intelligence_digests'),
+            'detail': 'Subscriber-safe intelligence summaries approved for demo visibility.',
+        },
+        {
+            'label': 'Commercial requests',
+            'value': commercial_requests,
+            'status': 'ready' if commercial_requests else 'attention',
+            'url': url_for('admin.commercial_requests'),
+            'detail': 'Upgrade, API, and Live Intelligence request pipeline.',
+        },
+        {
+            'label': 'Document access requests',
+            'value': document_access_requests,
+            'status': 'ready' if document_access_requests else 'attention',
+            'url': url_for('admin.due_diligence_requests'),
+            'detail': 'Buyer due diligence and restricted document access workflow.',
+        },
+        {
+            'label': 'API access requests',
+            'value': api_access_requests,
+            'status': 'ready' if api_access_requests else 'attention',
+            'url': url_for('admin.commercial_requests', request_type='api_access'),
+            'detail': 'API productisation demand without auto-created secrets.',
+        },
+        {
+            'label': 'Pending document review',
+            'value': pending_document_reviews,
+            'status': 'attention' if pending_document_reviews else 'ready',
+            'url': url_for('admin.document_review_queue'),
+            'detail': 'Admin review queue for document governance.',
+        },
+        {
+            'label': 'Automation queue health',
+            'value': queued_automation + running_automation + needs_review_automation + failed_automation,
+            'status': 'attention' if failed_automation or needs_review_automation else 'ready',
+            'url': url_for('admin.intelligence_automation_dashboard'),
+            'detail': f'{queued_automation} queued, {running_automation} running, {needs_review_automation} needs review, {failed_automation} failed.',
+        },
+    ]
+    return {
+        'indicators': indicators,
+        'summary': {
+            'active_sources': indicators[0]['value'],
+            'recent_runs': indicators[1]['value'],
+            'open_alerts': open_alerts,
+            'approved_digests': indicators[3]['value'],
+            'commercial_requests': commercial_requests,
+            'document_access_requests': document_access_requests,
+            'api_access_requests': api_access_requests,
+            'pending_document_reviews': pending_document_reviews,
+            'automation_attention': indicators[8]['value'],
+        },
+        'recent_commercial_requests': CommercialRequest.query.order_by(CommercialRequest.created_at.desc()).limit(8).all(),
+        'recent_access_requests': DocumentAccessRequest.query.order_by(DocumentAccessRequest.created_at.desc()).limit(8).all(),
+        'recent_ingestion_runs': IntelligenceIngestionRun.query.order_by(IntelligenceIngestionRun.created_at.desc()).limit(8).all(),
+    }
+
+
+def demo_walkthrough_steps():
+    return [
+        {
+            'title': '1. Show the operating dashboard',
+            'description': 'Start with the admin dashboard to orient buyers, partners, investors, and internal reviewers around the operating model.',
+            'url': url_for('admin.dashboard'),
+            'label': 'Admin dashboard',
+        },
+        {
+            'title': '2. Show commercial readiness',
+            'description': 'Use readiness indicators to explain what is populated, what needs review, and what is intentionally gated.',
+            'url': url_for('admin.commercial_readiness'),
+            'label': 'Readiness indicators',
+        },
+        {
+            'title': '3. Walk through Intelligence Engine sources',
+            'description': 'Show safe source registry, manual ingestion, internal alerts, and publication candidates.',
+            'url': url_for('admin.intelligence_sources'),
+            'label': 'Intelligence sources',
+        },
+        {
+            'title': '4. Review commercial demand',
+            'description': 'Open upgrade, API, and Live Intelligence requests without changing payment flows or granting access.',
+            'url': url_for('admin.commercial_requests'),
+            'label': 'Commercial requests',
+        },
+        {
+            'title': '5. Explain governed document access',
+            'description': 'Show buyer due diligence and restricted document request queues while keeping files and private paths hidden.',
+            'url': url_for('admin.due_diligence_requests'),
+            'label': 'Due diligence',
+        },
+        {
+            'title': '6. Show subscriber experience',
+            'description': 'Use the product tour, My Access, API docs, document requests, and intelligence digests to demo the buyer-facing flow.',
+            'url': url_for('subscriber.product_tour'),
+            'label': 'Product tour',
+        },
+    ]
+
+
+def admin_operating_model_links():
+    return [
+        {'label': 'Actor Registry', 'description': 'Partner-managed market actor records.', 'url': url_for('admin.actor_registry')},
+        {'label': 'Documents', 'description': 'Document review and vault governance.', 'url': url_for('admin.document_review_queue')},
+        {'label': 'Document Review', 'description': 'Admin approval, verification, and correction queue.', 'url': url_for('admin.document_review_queue')},
+        {'label': 'Commercial Requests', 'description': 'Upgrade, API, and Live Intelligence request pipeline.', 'url': url_for('admin.commercial_requests')},
+        {'label': 'Buyer Due Diligence', 'description': 'Controlled document access request workflow.', 'url': url_for('admin.due_diligence_requests')},
+        {'label': 'API Products', 'description': 'API clients, usage, blocked requests, and enquiries.', 'url': url_for('admin.api_dashboard')},
+        {'label': 'Automation', 'description': 'Document intelligence automation and scheduler health.', 'url': url_for('admin.intelligence_automation_dashboard')},
+        {'label': 'Intelligence Sources', 'description': 'Safe source registry and ingestion controls.', 'url': url_for('admin.intelligence_sources')},
+        {'label': 'Intelligence Alerts', 'description': 'Internal alert queue for reviewed intelligence.', 'url': url_for('admin.intelligence_alerts')},
+        {'label': 'Publication Candidates', 'description': 'Approved digest candidate review.', 'url': url_for('admin.intelligence_publication_candidates')},
+        {'label': 'Reports', 'description': 'Commercial pipeline and revenue readiness reporting.', 'url': url_for('admin.commercial_reports')},
+    ]
+
+
 @admin_bp.route('/')
 @login_required
 @admin_required
@@ -2135,7 +2297,52 @@ def dashboard():
                            commercial_report_followups=commercial_report_followups,
                            automation_attention_count=automation_attention_count,
                            open_intelligence_alert_count=open_intelligence_alert_count,
+                           operating_model_links=admin_operating_model_links(),
                            recent_exports=recent_exports)
+
+
+@admin_bp.route('/actors')
+@login_required
+@admin_required
+def actor_registry():
+    actors = (
+        MarketActor.query
+        .filter(MarketActor.archived_at.is_(None))
+        .order_by(MarketActor.updated_at.desc(), MarketActor.id.desc())
+        .limit(100)
+        .all()
+    )
+    type_counts = Counter(actor.actor_type for actor in actors if actor.actor_type)
+    status_counts = Counter(actor.status for actor in actors if actor.status)
+    return render_template(
+        'admin/actor_registry.html',
+        actors=actors,
+        type_counts=type_counts,
+        status_counts=status_counts,
+    )
+
+
+@admin_bp.route('/demo-walkthrough')
+@login_required
+@admin_required
+def demo_walkthrough():
+    return render_template(
+        'admin/demo_walkthrough.html',
+        walkthrough_steps=demo_walkthrough_steps(),
+        operating_model_links=admin_operating_model_links(),
+        readiness=commercial_readiness_context(),
+    )
+
+
+@admin_bp.route('/commercial-readiness')
+@login_required
+@admin_required
+def commercial_readiness():
+    return render_template(
+        'admin/commercial_readiness.html',
+        **commercial_readiness_context(),
+        operating_model_links=admin_operating_model_links(),
+    )
 
 
 @admin_bp.route('/intelligence-automation')

@@ -4,9 +4,15 @@
 
 {% block content %}
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-    <div class="mb-8">
-        <h1 class="text-3xl font-bold text-gray-900">Admin Dashboard</h1>
-        <p class="text-gray-600 mt-1">Manage datasets, users, and monitor platform activity</p>
+    <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4 mb-8">
+        <div>
+            <h1 class="text-3xl font-bold text-gray-900">Admin Dashboard</h1>
+            <p class="text-gray-600 mt-1">Manage datasets, users, and monitor platform activity</p>
+        </div>
+        <div class="flex flex-wrap gap-3">
+            <a href="{{ url_for('admin.demo_walkthrough') }}" class="px-5 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50">Demo Walkthrough</a>
+            <a href="{{ url_for('admin.commercial_readiness') }}" class="px-5 py-2 rounded-lg bg-primary text-white hover:bg-secondary">Commercial Readiness</a>
+        </div>
     </div>
 
     <div class="grid md:grid-cols-12 gap-6 mb-8">
@@ -70,6 +76,26 @@
             <p class="text-3xl font-bold text-amber-600 mt-2">{{ open_intelligence_alert_count }}</p>
         </div>
     </div>
+
+    {% if operating_model_links %}
+    <section class="bg-white rounded-xl shadow-sm border p-6 mb-8">
+        <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-5">
+            <div>
+                <h2 class="text-xl font-semibold text-gray-900">Platform Operating Model</h2>
+                <p class="text-sm text-gray-600 mt-1">Core admin surfaces for demonstrating how data, documents, commercial requests, automation, and intelligence move through governed workflows.</p>
+            </div>
+            <a href="{{ url_for('admin.demo_walkthrough') }}" class="text-sm text-primary hover:underline">Open demo path</a>
+        </div>
+        <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {% for item in operating_model_links %}
+            <a href="{{ item.url }}" class="rounded-lg border border-gray-200 p-4 hover:border-primary hover:bg-gray-50">
+                <p class="font-medium text-gray-900">{{ item.label }}</p>
+                <p class="text-sm text-gray-600 mt-1">{{ item.description }}</p>
+            </a>
+            {% endfor %}
+        </div>
+    </section>
+    {% endif %}
 
     <div class="grid md:grid-cols-3 gap-6 mb-8">
         <a href="{{ url_for('admin.upload') }}" class="bg-primary text-white rounded-xl p-6 hover:bg-secondary transition">

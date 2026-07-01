@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+
+{% block title %}Demo Walkthrough - FieldSight Africa{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4 mb-8">
+        <div>
+            <a href="{{ url_for('admin.dashboard') }}" class="text-primary hover:underline text-sm">&larr; Back to Admin Dashboard</a>
+            <h1 class="text-3xl font-bold text-gray-900 mt-3">Commercial Demo Walkthrough</h1>
+            <p class="text-gray-600 mt-1">A safe walkthrough path for buyers, partners, investors, and internal reviewers.</p>
+        </div>
+        <a href="{{ url_for('admin.commercial_readiness') }}" class="bg-primary text-white px-5 py-2 rounded-lg hover:bg-secondary transition">Commercial Readiness</a>
+    </div>
+
+    <div class="rounded-xl bg-blue-50 border border-blue-200 p-5 mb-6 text-sm text-blue-800">
+        Demo walkthrough pages summarize existing governed workflows. They do not expose document files, private paths, raw extraction text, contact fields, restricted fields, API secrets, key hashes, or payment controls.
+    </div>
+
+    <div class="grid md:grid-cols-4 gap-6 mb-8">
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <p class="text-sm text-gray-500">Active Sources</p>
+            <p class="text-3xl font-bold text-gray-900 mt-2">{{ readiness.summary.active_sources }}</p>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <p class="text-sm text-gray-500">Recent Runs</p>
+            <p class="text-3xl font-bold text-gray-900 mt-2">{{ readiness.summary.recent_runs }}</p>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <p class="text-sm text-gray-500">Approved Digests</p>
+            <p class="text-3xl font-bold text-emerald-700 mt-2">{{ readiness.summary.approved_digests }}</p>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <p class="text-sm text-gray-500">Commercial Requests</p>
+            <p class="text-3xl font-bold text-primary mt-2">{{ readiness.summary.commercial_requests }}</p>
+        </div>
+    </div>
+
+    <section class="bg-white rounded-xl shadow-sm border p-6 mb-8">
+        <h2 class="text-xl font-semibold text-gray-900 mb-5">Suggested Demo Path</h2>
+        <div class="grid lg:grid-cols-2 gap-4">
+            {% for step in walkthrough_steps %}
+            <a href="{{ step.url }}" class="block rounded-lg border border-gray-200 p-5 hover:border-primary hover:bg-gray-50">
+                <p class="font-semibold text-gray-900">{{ step.title }}</p>
+                <p class="text-sm text-gray-600 mt-2">{{ step.description }}</p>
+                <p class="text-sm text-primary mt-3">{{ step.label }}</p>
+            </a>
+            {% endfor %}
+        </div>
+    </section>
+
+    <section class="bg-white rounded-xl shadow-sm border p-6">
+        <h2 class="text-xl font-semibold text-gray-900 mb-5">Operating Model Links</h2>
+        <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {% for item in operating_model_links %}
+            <a href="{{ item.url }}" class="rounded-lg border border-gray-200 p-4 hover:border-primary hover:bg-gray-50">
+                <p class="font-medium text-gray-900">{{ item.label }}</p>
+                <p class="text-sm text-gray-600 mt-1">{{ item.description }}</p>
+            </a>
+            {% endfor %}
+        </div>
+    </section>
+</div>
+{% endblock %}

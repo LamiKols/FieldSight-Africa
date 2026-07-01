@@ -505,6 +505,50 @@ def intelligence_digest_detail(digest_id):
     )
 
 
+@subscriber_bp.route('/subscriber/product-tour')
+@login_required
+def product_tour():
+    tour_steps = [
+        {
+            'title': 'My Access',
+            'description': 'Review subscriptions, licences, live intelligence scope, API scope, document metadata access, and recent requests.',
+            'url': url_for('subscriber.my_access'),
+            'label': 'Review access',
+        },
+        {
+            'title': 'Products',
+            'description': 'Compare Core Regional, Expanded Regional, National, and Live Market Intelligence packaging.',
+            'url': url_for('subscriber.products'),
+            'label': 'Compare products',
+        },
+        {
+            'title': 'API Docs',
+            'description': 'Understand safe metadata fields, authentication expectations, limits, and example requests.',
+            'url': url_for('subscriber.api_docs'),
+            'label': 'Read API docs',
+        },
+        {
+            'title': 'Document Requests',
+            'description': 'Track controlled document access requests without exposing files, private paths, or restricted fields.',
+            'url': url_for('subscriber.document_access_requests'),
+            'label': 'Track requests',
+        },
+        {
+            'title': 'Intelligence Digests',
+            'description': 'Read approved safe intelligence summaries created from reviewed internal intelligence.',
+            'url': url_for('subscriber.intelligence_digests'),
+            'label': 'View digests',
+        },
+    ]
+    return render_template(
+        'subscriber/product_tour.html',
+        tour_steps=tour_steps,
+        products=product_catalogue_items(),
+        safe_fields=API_SAFE_METADATA_FIELDS,
+        entitlements=get_user_entitlements(current_user),
+    )
+
+
 @subscriber_bp.route('/subscriber/api')
 @login_required
 def api_product():

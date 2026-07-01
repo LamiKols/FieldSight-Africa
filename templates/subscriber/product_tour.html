@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+
+{% block title %}Product Tour - FieldSight Africa{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4 mb-8">
+        <div>
+            <h1 class="text-3xl font-bold text-gray-900">Product Tour</h1>
+            <p class="text-gray-600 mt-1">A guided view of your governed data, API, document request, and intelligence digest surfaces.</p>
+        </div>
+        <a href="{{ url_for('subscriber.my_access') }}" class="px-5 py-2 rounded-lg bg-primary text-white hover:bg-secondary">My Access</a>
+    </div>
+
+    <div class="rounded-xl bg-blue-50 border border-blue-200 p-5 mb-6 text-sm text-blue-800">
+        Product tour pages explain available surfaces and request paths. They do not grant paid entitlements, expose files, reveal private paths, or bypass consent, review, redaction, publish-readiness, entitlement, or API safety gates.
+    </div>
+
+    <section class="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+        {% for step in tour_steps %}
+        <a href="{{ step.url }}" class="bg-white rounded-xl shadow-sm border p-6 hover:border-primary hover:bg-gray-50">
+            <p class="font-semibold text-gray-900">{{ step.title }}</p>
+            <p class="text-sm text-gray-600 mt-2">{{ step.description }}</p>
+            <p class="text-sm text-primary mt-4">{{ step.label }}</p>
+        </a>
+        {% endfor %}
+    </section>
+
+    <div class="grid lg:grid-cols-2 gap-6 mb-8">
+        <section class="bg-white rounded-xl shadow-sm border p-6">
+            <h2 class="text-xl font-semibold text-gray-900 mb-5">Commercial Products</h2>
+            <div class="space-y-4">
+                {% for product in products %}
+                <div class="rounded-lg border border-gray-200 p-4">
+                    <div class="flex items-start justify-between gap-4">
+                        <div>
+                            <p class="font-medium text-gray-900">{{ product.name }}</p>
+                            <p class="text-sm text-gray-600 mt-1">{{ product.description }}</p>
+                        </div>
+                        <span class="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-700">{{ product.product_type|replace('_', ' ')|title }}</span>
+                    </div>
+                    <p class="text-sm text-gray-600 mt-3">Regions: {{ product.pack.regions_allowed if product.pack else 'Custom' }}</p>
+                    <p class="text-sm text-gray-600">Crops: {{ product.pack.crops_allowed if product.pack else 'Custom' }}</p>
+                </div>
+                {% endfor %}
+            </div>
+        </section>
+
+        <section class="bg-white rounded-xl shadow-sm border p-6">
+            <h2 class="text-xl font-semibold text-gray-900 mb-5">Current Access Context</h2>
+            <dl class="grid sm:grid-cols-2 gap-4 text-sm mb-6">
+                <div>
+                    <dt class="text-gray-500">Access Type</dt>
+                    <dd class="font-medium text-gray-900">{{ entitlements.access_type|replace('_', ' ')|title }}</dd>
+                </div>
+                <div>
+                    <dt class="text-gray-500">Monthly Export Limit</dt>
+                    <dd class="font-medium text-gray-900">{{ entitlements.monthly_export_limit if entitlements.monthly_export_limit is not none else 'Unlimited by live licence' }}</dd>
+                </div>
+                <div>
+                    <dt class="text-gray-500">Regions</dt>
+                    <dd class="font-medium text-gray-900">{{ entitlements.regions|join(', ') if entitlements.regions else 'Not currently scoped' }}</dd>
+                </div>
+                <div>
+                    <dt class="text-gray-500">Datasets</dt>
+                    <dd class="font-medium text-gray-900">{{ entitlements.datasets|length }}</dd>
+                </div>
+            </dl>
+
+            <div class="rounded-lg border border-gray-200 p-4">
+                <p class="font-medium text-gray-900">API-safe document metadata fields</p>
+                <p class="text-sm text-gray-600 mt-1">The metadata endpoint remains governed by consent, review, verification, publish-readiness, redaction, entitlement, expiry, and risk gates.</p>
+                <div class="flex flex-wrap gap-2 mt-3">
+                    {% for field in safe_fields[:10] %}
+                    <span class="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-700">{{ field }}</span>
+                    {% endfor %}
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <section class="bg-white rounded-xl shadow-sm border p-6">
+        <h2 class="text-xl font-semibold text-gray-900 mb-5">Request Paths</h2>
+        <div class="grid md:grid-cols-3 gap-4">
+            <a href="{{ url_for('subscriber.commercial_request_new', request_type='upgrade') }}" class="rounded-lg border border-gray-200 p-4 hover:border-primary hover:bg-gray-50">
+                <p class="font-medium text-gray-900">Upgrade Enquiry</p>
+                <p class="text-sm text-gray-600 mt-1">Ask for expanded region, crop, dataset, or national access.</p>
+            </a>
+            <a href="{{ url_for('subscriber.api_request_access') }}" class="rounded-lg border border-gray-200 p-4 hover:border-primary hover:bg-gray-50">
+                <p class="font-medium text-gray-900">API Access</p>
+                <p class="text-sm text-gray-600 mt-1">Request API onboarding without creating keys automatically.</p>
+            </a>
+            <a href="{{ url_for('subscriber.new_document_access_request') }}" class="rounded-lg border border-gray-200 p-4 hover:border-primary hover:bg-gray-50">
+                <p class="font-medium text-gray-900">Document Access</p>
+                <p class="text-sm text-gray-600 mt-1">Request controlled due diligence review without exposing files.</p>
+            </a>
+        </div>
+    </section>
+</div>
+{% endblock %}
